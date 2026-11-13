@@ -2,7 +2,7 @@
  * Copyright (C) OpenTX
  *
  * Based on code named
- *   th9x - http://code.google.com/p/th9x 
+ *   th9x - http://code.google.com/p/th9x
  *   er9x - http://code.google.com/p/er9x
  *   gruvin9x - http://code.google.com/p/gruvin9x
  *
@@ -47,11 +47,6 @@
 
 #define MENUS_SCROLLBAR_WIDTH          2
 
-inline void drawFieldLabel(coord_t x, coord_t y, const char * str)
-{
-  lcdDrawText(0, y, str);
-}
-
 extern uint8_t modelBitmap[MODEL_BITMAP_SIZE];
 bool loadModelBitmap(char * name, uint8_t * bitmap);
 
@@ -78,7 +73,6 @@ void drawColumnHeader(const char * const * headers, uint8_t index);
 void drawStick(coord_t centrex, int16_t xval, int16_t yval);
 
 void drawAlertBox(const char * title, const char * text, const char * action);
-#define ALERT_SOUND_ARG , uint8_t sound
 void showAlertBox(const char * title, const char * text, const char * action, uint8_t sound);
 
 void doMainScreenGraphics();
@@ -179,11 +173,11 @@ int checkIncDec(event_t event, int val, int i_min, int i_max, unsigned int i_fla
 #define CURSOR_ON_LINE()         (menuHorizontalPosition<0)
 
 #define CHECK_FLAG_NO_SCREEN_INDEX   1
-void check(const char * title, event_t event, uint8_t curr, const MenuHandlerFunc *menuTab, uint8_t menuTabSize, const pm_uint8_t *horTab, uint8_t horTabMax, vertpos_t maxrow, uint8_t flags=0);
+void check(const char * title, event_t event, uint8_t curr, const MenuHandlerFunc *menuTab, uint8_t menuTabSize, const uint8_t *horTab, uint8_t horTabMax, vertpos_t maxrow, uint8_t flags=0);
 void check_simple(const char *title, event_t event, uint8_t curr, const MenuHandlerFunc *menuTab, uint8_t menuTabSize, vertpos_t maxrow);
 void check_submenu_simple(const char * title, event_t event, uint8_t maxrow);
 
-void title(const pm_char * s);
+void title(const char * s);
 #define TITLE(str) title(str)
 
 #define MENU_TAB(...) const uint8_t mstate_tab[] = __VA_ARGS__
@@ -225,8 +219,8 @@ void title(const pm_char * s);
 
 typedef int choice_t;
 
-choice_t editChoice(coord_t x, coord_t y, const pm_char *label, const pm_char *values, choice_t value, choice_t min, choice_t max, LcdFlags attr, event_t event);
-uint8_t editCheckBox(uint8_t value, coord_t x, coord_t y, const pm_char *label, LcdFlags attr, event_t event);
+choice_t editChoice(coord_t x, coord_t y, const char *label, const char *values, choice_t value, choice_t min, choice_t max, LcdFlags attr, event_t event);
+uint8_t editCheckBox(uint8_t value, coord_t x, coord_t y, const char *label, LcdFlags attr, event_t event);
 swsrc_t editSwitch(coord_t x, coord_t y, swsrc_t value, LcdFlags attr, event_t event);
 
 #define ON_OFF_MENU_ITEM(value, x, y, label, attr, event) value = editCheckBox(value, x, y, label, attr, event)
@@ -244,25 +238,21 @@ swsrc_t editSwitch(coord_t x, coord_t y, swsrc_t value, LcdFlags attr, event_t e
 #endif
 
 void gvarWeightItem(coord_t x, coord_t y, MixData * md, LcdFlags attr, event_t event);
-  
+
 extern uint8_t s_curveChan;
 void editCurveRef(coord_t x, coord_t y, CurveRef & curve, event_t event, LcdFlags flags);
 
 extern uint8_t editNameCursorPos;
 void editName(coord_t x, coord_t y, char * name, uint8_t size, event_t event, uint8_t active, LcdFlags attr=ZCHAR);
-void editSingleName(coord_t x, coord_t y, const pm_char * label, char * name, uint8_t size, event_t event, uint8_t active);
+void editSingleName(coord_t x, coord_t y, const char * label, char * name, uint8_t size, event_t event, uint8_t active);
 
 uint8_t editDelay(coord_t y, event_t event, uint8_t attr, const char * str, uint8_t delay);
 #define EDIT_DELAY(y, event, attr, str, delay) editDelay(y, event, attr, str, delay)
 
-#define WARNING_TYPE_ASTERISK          0
-#define WARNING_TYPE_CONFIRM           1
-#define WARNING_TYPE_INPUT             2
-
 void copySelection(char * dst, const char * src, uint8_t size);
 
-extern const pm_char * warningText;
-extern const pm_char * warningInfoText;
+extern const char * warningText;
+extern const char * warningInfoText;
 extern uint8_t         warningInfoLength;
 extern uint8_t         warningResult;
 extern uint8_t         warningType;
@@ -291,15 +281,12 @@ extern char statusLineMsg[STATUS_LINE_LENGTH];
 void showStatusLine();
 void drawStatusLine();
 
-#define TEXT_FILENAME_MAXLEN           40
-extern char s_text_file[TEXT_FILENAME_MAXLEN];
 void menuTextView(event_t event);
 void pushMenuTextView(const char *filename);
 void pushModelNotes();
+void readModelNotes();
 
 void menuChannelsView(event_t event);
-
-#define LABEL(...) (uint8_t)-1
 
 #if defined(ROTARY_ENCODER_NAVIGATION)
 #define CURSOR_MOVED_LEFT(event)       (event==EVT_ROTARY_LEFT)
@@ -310,7 +297,6 @@ void menuChannelsView(event_t event);
 #endif
 
 #define REPEAT_LAST_CURSOR_MOVE()      { if (CURSOR_MOVED_LEFT(event) || CURSOR_MOVED_RIGHT(event)) putEvent(event); else menuHorizontalPosition = 0; }
-#define MOVE_CURSOR_FROM_HERE()        if (menuHorizontalPosition > 0) REPEAT_LAST_CURSOR_MOVE()
 
 #define MENU_FIRST_LINE_EDIT           (menuTab ? (MAXCOL((uint16_t)0) >= HIDDEN_ROW ? (MAXCOL((uint16_t)1) >= HIDDEN_ROW ? 2 : 1) : 0) : 0)
 #define POS_HORZ_INIT(posVert)         ((COLATTR(posVert) & NAVIGATION_LINE_BY_LINE) ? -1 : 0)
@@ -326,7 +312,7 @@ uint8_t switchToMix(uint8_t source);
 extern coord_t scrollbar_X;
 #define SET_SCROLLBAR_X(x) scrollbar_X = (x);
 
-extern const pm_uchar sticks[] PROGMEM;
+extern const unsigned char sticks[] ;
 
 #if defined(FLIGHT_MODES)
 void displayFlightModes(coord_t x, coord_t y, FlightModesType value);

@@ -51,11 +51,6 @@ enum Mix216Sources {
   MIXSRC216_LAST_POT = MIXSRC216_P3,
 #endif
 
-#if defined(PCBSKY9X)
-  MIXSRC216_REa,
-  MIXSRC216_LAST_ROTARY_ENCODER = MIXSRC216_REa,
-#endif
-
   MIXSRC216_MAX,
 
   MIXSRC216_CYC1,
@@ -194,14 +189,12 @@ enum Telemetry216Source {
   TELEM216_GPS_TIME,
 };
 
-#if defined(CPUARM)
 PACK(typedef struct {
   uint8_t type:3;
   uint8_t smooth:1;
   uint8_t spare:4;
   int8_t  points;
 }) CurveData_v216;
-#endif
 
 #if defined(PCBTARANIS)
 PACK(typedef struct {
@@ -499,7 +492,7 @@ PACK(typedef struct {
   uint8_t nPotsToWarn; \
   int8_t potPosition[NUM_POTS+NUM_SLIDERS]; \
   uint8_t spare[2];
-#elif defined(PCBSKY9X)
+#elif defined(PCBI6X)
 #define MODELDATA_EXTRA_216 \
   uint8_t externalModule; \
   ModuleData_v216 moduleData[NUM_MODULES+1]; \
@@ -545,19 +538,15 @@ PACK(typedef struct {
 PACK(typedef struct {
   ModelHeader_v216 header;
   TimerData_v216 timers[2];
-  AVR_FIELD(uint8_t   protocol:3)
-  ARM_FIELD(uint8_t   telemetryProtocol:3)
+  uint8_t   telemetryProtocol:3;
   uint8_t   thrTrim:1;            // Enable Throttle Trim
-  AVR_FIELD(int8_t    ppmNCH:4)
-  ARM_FIELD(int8_t    spare2:4)
+  int8_t    spare2:4;
   int8_t    trimInc:3;            // Trim Increments
   uint8_t   disableThrottleWarning:1;
-  ARM_FIELD(uint8_t displayChecklist:1)
-  AVR_FIELD(uint8_t pulsePol:1)
+  uint8_t displayChecklist:1;
   uint8_t   extendedLimits:1;
   uint8_t   extendedTrims:1;
   uint8_t   throttleReversed:1;
-  AVR_FIELD(int8_t ppmDelay)
   BeepANACenter beepANACenter;        // 1<<0->A1.. 1<<6->A7
   MixData_v216 mixData[MAX_MIXERS];
   LimitData_v216 limitData[MAX_OUTPUT_CHANNELS];
@@ -593,14 +582,14 @@ PACK(typedef struct {
 PACK(typedef struct {
   ModelHeader header;
   TimerData_v217 timers[MAX_TIMERS];
-  ARM_FIELD(uint8_t   telemetryProtocol:3)
+  uint8_t   telemetryProtocol:3;
   uint8_t   thrTrim:1;            // Enable Throttle Trim
-  ARM_FIELD(uint8_t   noGlobalFunctions:1)
-  ARM_FIELD(uint8_t   displayTrims:2)
-  ARM_FIELD(uint8_t   ignoreSensorIds:1)
+  uint8_t   noGlobalFunctions:1;
+  uint8_t   displayTrims:2;
+  uint8_t   ignoreSensorIds:1;
   int8_t    trimInc:3;            // Trim Increments
   uint8_t   disableThrottleWarning:1;
-  ARM_FIELD(uint8_t displayChecklist:1)
+  uint8_t displayChecklist:1;
   uint8_t   extendedLimits:1;
   uint8_t   extendedTrims:1;
   uint8_t   throttleReversed:1;
@@ -625,7 +614,7 @@ PACK(typedef struct {
   GVarData_v217 gvars[MAX_GVARS];
 
   FrSkyTelemetryData frsky;
-  RssiAlarmData rssiAlarms;
+  RFAlarmData rfAlarms;
 
   MODELDATA_EXTRA_217
 
@@ -773,7 +762,7 @@ PACK(typedef struct {
   int8_t   varioRepeat;
   int8_t   backgroundVolume;
  
-  TARANIS_FIELD(uint8_t serial2Mode:6)
+  TARANIS_FIELD(uint8_t auxSerialMode:6)
   TARANIS_FIELD(uint8_t slidersConfig:2)
   TARANIS_FIELD(uint8_t potsConfig)
   TARANIS_FIELD(uint8_t backlightColor)
@@ -844,7 +833,7 @@ void ConvertRadioData_217_to_218(RadioData & settings)
   ConvertSpecialFunctions_217_to_218(settings.customFn, settings_v217.customFn);
 
 #if defined(PCBTARANIS)
-  settings.serial2Mode = settings_v217.serial2Mode;
+  settings.auxSerialMode = settings_v217.auxSerialMode;
   settings.slidersConfig = settings_v217.slidersConfig;
   settings.potsConfig = settings_v217.potsConfig;
   settings.backlightColor = settings_v217.backlightColor;
@@ -858,16 +847,6 @@ void ConvertRadioData_217_to_218(RadioData & settings)
   memcpy(settings.bluetoothName, settings_v217.bluetoothName, sizeof(settings.bluetoothName));
 #endif
 
-#if defined(PCBSKY9X)
-  settings.txCurrentCalibration = settings_v217.txCurrentCalibration;
-  settings.temperatureWarn = settings_v217.temperatureWarn;
-  settings.mAhWarn = settings_v217.mAhWarn;
-  settings.mAhUsed = settings_v217.mAhUsed;
-  settings.temperatureCalib = settings_v217.temperatureCalib;
-  settings.optrexDisplay = settings_v217.optrexDisplay;
-  settings.sticksGain = settings_v217.sticksGain;
-  settings.rotarySteps = settings_v217.rotarySteps;
-#endif
 }
 
 void ConvertModel_216_to_217(ModelData & model)
@@ -895,7 +874,7 @@ void ConvertModel_216_to_217(ModelData & model)
   memcpy(newModel.header.bitmap, oldModel.header.bitmap, LEN_BITMAP_NAME);
 #endif
 
-  for (uint8_t i=0; i<2; i++) {
+  for (uint32_t i=0; i<2; i++) {
     TimerData_v217 & timer = newModel.timers[i];
     if (oldModel.timers[i].mode >= TMRMODE_COUNT)
       timer.mode = TMRMODE_COUNT + ConvertSwitch_216_to_217(oldModel.timers[i].mode - TMRMODE_COUNT + 1) - 1;
@@ -1065,7 +1044,7 @@ void ConvertModel_217_to_218(ModelData & model)
   TRACE("Model %s conversion from v217 to v218", name);
 
   newModel.header = oldModel.header;
-  for (uint8_t i=0; i<MAX_TIMERS; i++) {
+  for (uint32_t i=0; i<MAX_TIMERS; i++) {
     if (oldModel.timers[i].mode >= TMRMODE_COUNT)
       newModel.timers[i].mode = TMRMODE_COUNT + ConvertSwitch_217_to_218(oldModel.timers[i].mode - TMRMODE_COUNT + 1) - 1;
     else
@@ -1183,9 +1162,6 @@ void ConvertModel_217_to_218(ModelData & model)
     newModel.flightModeData[i].swtch = ConvertSwitch_217_to_218(oldModel.flightModeData[i].swtch);
     newModel.flightModeData[i].fadeIn = oldModel.flightModeData[i].fadeIn;
     newModel.flightModeData[i].fadeOut = oldModel.flightModeData[i].fadeOut;
-#if defined(PCBSKY9X)
-    memcpy(newModel.flightModeData[i].rotaryEncoders, oldModel.flightModeData[i].rotaryEncoders, sizeof(newModel.flightModeData[i].rotaryEncoders));
-#endif
     memcpy(newModel.flightModeData[i].gvars, oldModel.flightModeData[i].gvars, sizeof(newModel.flightModeData[i].gvars));
   }
   newModel.thrTraceSrc = oldModel.thrTraceSrc;
@@ -1204,7 +1180,7 @@ void ConvertModel_217_to_218(ModelData & model)
         }
       }
     }
-    else if (((oldModel.frsky.screensType >> (2*i)) & 0x03) == TELEMETRY_SCREEN_TYPE_GAUGES) {
+    else if (((oldModel.frsky.screensType >> (2*i)) & 0x03) == TELEMETRY_SCREEN_TYPE_BARS) {
       for (int j = 0; j < 4; j++) {
         newModel.frsky.screens[i].bars[j].source = ConvertSource_217_to_218(oldModel.frsky.screens[i].bars[j].source);
       }
@@ -1221,7 +1197,7 @@ void ConvertModel_217_to_218(ModelData & model)
   newModel.potsWarnMode = oldModel.potsWarnMode;
   newModel.potsWarnEnabled = oldModel.potsWarnEnabled;
   memcpy(newModel.potsWarnPosition, oldModel.potsWarnPosition, sizeof(newModel.potsWarnPosition));
-  for (uint8_t i=0; i<MAX_TELEMETRY_SENSORS; i++) {
+  for (uint32_t i=0; i<MAX_TELEMETRY_SENSORS; i++) {
     newModel.telemetrySensors[i] = oldModel.telemetrySensors[i];
     if (newModel.telemetrySensors[i].unit > UNIT_WATTS)
       newModel.telemetrySensors[i].unit += 1;
@@ -1256,10 +1232,10 @@ bool eeConvert()
   const char *msg = NULL;
 
   if (g_eeGeneral.version == 216) {
-    msg = PSTR("EEprom Data v216");
+    msg = "EEprom Data v216";
   }
   else if (g_eeGeneral.version == 217) {
-    msg = PSTR("EEprom Data v217");
+    msg = "EEprom Data v217";
   }
   else {
     return false;
@@ -1268,12 +1244,9 @@ bool eeConvert()
   int conversionVersionStart = g_eeGeneral.version;
 
   // Information to the user and wait for key press
-#if defined(PCBSKY9X)
-  g_eeGeneral.optrexDisplay = 0;
-#endif
   g_eeGeneral.backlightMode = e_backlight_mode_on;
   g_eeGeneral.backlightBright = 0;
-  g_eeGeneral.contrast = 25;
+  g_eeGeneral.contrast = LCD_CONTRAST_DEFAULT;
 
   ALERT(STR_STORAGE_WARNING, msg, AU_BAD_RADIODATA);
 
@@ -1301,7 +1274,7 @@ bool eeConvert()
 #endif
 
   // Models conversion
-  for (uint8_t id=0; id<MAX_MODELS; id++) {
+  for (uint32_t id=0; id<MAX_MODELS; id++) {
 #if defined(COLORLCD)
 #elif LCD_W >= 212
     lcdDrawSolidHorizontalLine(61, 6*FH+5, 10+id*2, FORCE);

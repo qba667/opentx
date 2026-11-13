@@ -20,11 +20,11 @@
 
 #include "opentx.h"
 
-void drawStringWithIndex(coord_t x, coord_t y, const pm_char * str, uint8_t idx, LcdFlags flags)
+void drawStringWithIndex(coord_t x, coord_t y, const char * str, uint8_t idx, LcdFlags flags)
 {
   if (flags & RIGHT) {
     lcdDrawNumber(x, y, idx, flags);
-    lcdDrawText(x-FWNUM, y, str, flags & ~LEADING0);
+    lcdDrawText(lcdNextPos, y, str, flags & ~LEADING0);
   }
   else {
     lcdDrawText(x, y, str, flags & ~LEADING0);
@@ -32,7 +32,6 @@ void drawStringWithIndex(coord_t x, coord_t y, const pm_char * str, uint8_t idx,
   }
 }
 
-#if defined(CPUARM)
 FlightModesType editFlightModes(coord_t x, coord_t y, event_t event, FlightModesType value, uint8_t attr)
 {
   int posHorz = menuHorizontalPosition;
@@ -60,9 +59,7 @@ FlightModesType editFlightModes(coord_t x, coord_t y, event_t event, FlightModes
   
   return value;
 }
-#endif
 
-#if defined(CPUARM)
 void editName(coord_t x, coord_t y, char * name, uint8_t size, event_t event, uint8_t active, LcdFlags attr)
 {
   uint8_t mode = 0;
@@ -88,7 +85,7 @@ void editName(coord_t x, coord_t y, char * name, uint8_t size, event_t event, ui
           if (c <= 0) v = -v;
         }
         else {
-          v = checkIncDec(event, abs(v), '0', 'z', 0);
+          v = checkIncDec(event, abs(v), ' ', 'z', 0);
         }
       }
       
@@ -104,25 +101,28 @@ void editName(coord_t x, coord_t y, char * name, uint8_t size, event_t event, ui
             s_editMode = 0;
           break;
 
-#if !defined(PCBTARANIS)
+#if defined(PCBXLITE) || !defined(PCBTARANIS)
+#if !defined(PCBI6X)
         case EVT_KEY_BREAK(KEY_LEFT):
           if (cur>0) cur--;
           break;
-          
+#endif
         case EVT_KEY_BREAK(KEY_RIGHT):
           if (cur<size-1) cur++;
           break;
 #endif
 
-#if defined(PCBTARANIS)
+#if defined(PCBXLITE)
+        case EVT_KEY_BREAK(KEY_SHIFT):
+#elif defined(PCBTARANIS)
         case EVT_KEY_LONG(KEY_ENTER):
 #else
-        case EVT_KEY_LONG(KEY_LEFT):
+        // case EVT_KEY_LONG(KEY_LEFT): // PCBI6X: KEY_LEFT not present
         case EVT_KEY_LONG(KEY_RIGHT):
 #endif
           
           if (attr & ZCHAR) {
-#if defined(PCBTARANIS)
+#if defined(PCBTARANIS) && !defined(PCBXLITE)
             if (v == 0) {
               s_editMode = 0;
               killEvents(event);
@@ -133,21 +133,25 @@ void editName(coord_t x, coord_t y, char * name, uint8_t size, event_t event, ui
             }
           }
           else {
+#if !defined(PCBXLITE)
             if (v == ' ') {
               s_editMode = 0;
               killEvents(event);
               break;
             }
-            else if (v >= 'A' && v <= 'Z') {
+            else
+#endif
+            if (v >= 'A' && v <= 'Z') {
               v = 'a' + v - 'A'; // toggle case
             }
             else if (v >= 'a' && v <= 'z') {
               v = 'A' + v - 'a'; // toggle case
             }
           }
-#if !defined(PCBTARANIS)
-          if (event==EVT_KEY_LONG(KEY_LEFT))
-            killEvents(KEY_LEFT);
+#if defined(PCBI6X)
+          // Prevent going to next cursor pos when toggling case
+          if (event == EVT_KEY_LONG(KEY_RIGHT))
+            killEvents(KEY_RIGHT);
 #endif
           break;
       }
@@ -158,7 +162,7 @@ void editName(coord_t x, coord_t y, char * name, uint8_t size, event_t event, ui
       }
       
       if (attr == ZCHAR) {
-        lcdDrawChar(x+editNameCursorPos*FW, y, idx2char(v), ERASEBG|INVERS|FIXEDWIDTH);
+        lcdDrawChar(x+editNameCursorPos*FW, y, zchar2char(v), ERASEBG|INVERS|FIXEDWIDTH);
       }
       else {
         lcdDrawChar(x+editNameCursorPos*FW, y, v, ERASEBG|INVERS|FIXEDWIDTH);
@@ -171,7 +175,6 @@ void editName(coord_t x, coord_t y, char * name, uint8_t size, event_t event, ui
     lcdNextPos = backupNextPos;
   }
 }
-#endif
 
 void gvarWeightItem(coord_t x, coord_t y, MixData * md, LcdFlags attr, event_t event)
 {
@@ -181,11 +184,9 @@ void gvarWeightItem(coord_t x, coord_t y, MixData * md, LcdFlags attr, event_t e
   MD_UNION_TO_WEIGHT(weight, md);
 }
 
-#if defined(CPUARM)
 void drawGVarName(coord_t x, coord_t y, int8_t idx, LcdFlags flags)
 {
   char s[8];
   getGVarString(s, idx);
   lcdDrawText(x, y, s, flags);
 }
-#endif

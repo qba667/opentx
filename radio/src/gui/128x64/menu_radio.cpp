@@ -20,7 +20,6 @@
 
 #include "opentx.h"
 
-#if defined(CPUARM)
 void menuRadioSpecialFunctions(event_t event)
 {
 #if defined(PCBTARANIS)
@@ -29,9 +28,7 @@ void menuRadioSpecialFunctions(event_t event)
     menuHorizontalPosition = 0;
   }
 #endif
-
   MENU(STR_MENUSPECIALFUNCS, menuTabGeneral, MENU_RADIO_SPECIAL_FUNCTIONS, HEADER_LINE+MAX_SPECIAL_FUNCTIONS, { HEADER_LINE_COLUMNS NAVIGATION_LINE_BY_LINE|4/*repeated*/ });
-
   menuSpecialFunctions(event, g_eeGeneral.customFn, &globalFunctionsContext);
 
 #if defined(PCBX7)
@@ -40,4 +37,15 @@ void menuRadioSpecialFunctions(event_t event)
   }
 #endif
 }
+
+const MenuHandlerFunc menuTabGeneral[]  = {
+#if defined(RADIO_TOOLS)
+  menuRadioTools,
 #endif
+  menuRadioSetup,
+  CASE_SDCARD(menuRadioSdManager)
+  menuRadioSpecialFunctions,
+  menuRadioTrainer,
+  menuRadioHardware,
+  menuRadioVersion
+};

@@ -49,37 +49,59 @@ void setSelectedUsbMode(int mode)
 
 int usbPlugged()
 {
-  // debounce
-  static uint8_t debounced_state = 0;
-  static uint8_t last_state = 0;
+  // if connected prevent false reads on USB DM pin
+  if (usbStarted()) {
+    return 1;
+  }
 
-  if (GPIO_ReadInputDataBit(USB_GPIO, USB_GPIO_PIN_VBUS)) {
-    if (last_state) {
-      debounced_state = 1;
-    }
-    last_state = 1;
-  }
-  else {
-    if (!last_state) {
-      debounced_state = 0;
-    }
-    last_state = 0;
-  }
-  return debounced_state;
+  static uint8_t debouncedState = 0;
+  static uint8_t lastState = 0;
+
+  uint8_t state = LL_GPIO_IsInputPinSet(USB_GPIO, USB_GPIO_PIN_DM) ? 0 : 1;
+
+  if (state == lastState)
+    debouncedState = state;
+  else
+    lastState = state;
+
+  return debouncedState;
 }
 
+#if defined(STM32F0)
+USB_CORE_HANDLE USB_Device_dev;
+#else
 USB_OTG_CORE_HANDLE USB_OTG_dev;
+#endif
 
+#if defined(STM32F0)
+extern "C" void USB_IRQHandler()
+{
+  USB_Istr();
+}
+#else
 extern "C" void OTG_FS_IRQHandler()
 {
   DEBUG_INTERRUPT(INT_OTG_FS);
   USBD_OTG_ISR_Handler(&USB_OTG_dev);
 }
+#endif
 
 void usbInit()
 {
+  // USB DP/DM as connection detect
+  LL_GPIO_InitTypeDef GPIO_InitStruct; // = {0};
+  GPIO_InitStruct.Pin   = USB_GPIO_PIN_DM;
+  // GPIO_InitStruct.Mode  = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull  = LL_GPIO_PULL_UP;
+  // GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  LL_GPIO_Init(USB_GPIO, &GPIO_InitStruct);
+
   // Initialize hardware
+#if defined(STM32F0)
+  USB_BSP_Init(&USB_Device_dev);
+#else
   USB_OTG_BSP_Init(&USB_OTG_dev);
+#endif
   usbDriverStarted = false;
 }
 
@@ -89,20 +111,35 @@ void usbStart()
 #if !defined(BOOT)
     case USB_JOYSTICK_MODE:
       // initialize USB as HID device
+#if defined(STM32F0)
+      USBD_Init(&USB_Device_dev, &USR_desc, &USBD_HID_cb, &USR_cb);
+#else
       USBD_Init(&USB_OTG_dev, USB_OTG_FS_CORE_ID, &USR_desc, &USBD_HID_cb, &USR_cb);
+#endif
       break;
 #endif
 #if defined(USB_SERIAL)
     case USB_SERIAL_MODE:
       // initialize USB as CDC device (virtual serial port)
+      // serialTxBufferClear();
+#if defined(STM32F0)
+      USBD_Init(&USB_Device_dev, &USR_desc, &USBD_CDC_cb, &USR_cb);
+#else
       USBD_Init(&USB_OTG_dev, USB_OTG_FS_CORE_ID, &USR_desc, &USBD_CDC_cb, &USR_cb);
+#endif
       break;
 #endif
+#if defined(USB_MSD)
     default:
     case USB_MASS_STORAGE_MODE:
       // initialize USB as MSC device
+#if defined(STM32F0)
+      USBD_Init(&USB_Device_dev, &USR_desc, &USBD_MSC_cb, &USR_cb);
+#else
       USBD_Init(&USB_OTG_dev, USB_OTG_FS_CORE_ID, &USR_desc, &USBD_MSC_cb, &USR_cb);
+#endif
       break;
+#endif
   }
   usbDriverStarted = true;
 }
@@ -110,7 +147,11 @@ void usbStart()
 void usbStop()
 {
   usbDriverStarted = false;
+#if defined(STM32F0)
+  USBD_DeInit(&USB_Device_dev);
+#else
   USBD_DeInit(&USB_OTG_dev);
+#endif
 }
 
 bool usbStarted()
@@ -130,8 +171,12 @@ void usbJoystickUpdate()
 {
   static uint8_t HID_Buffer[HID_IN_PACKET];
 
-  // test to se if TX buffer is free
+  // test to see if TX buffer is free
+#if defined(STM32F0)
+  if (USBD_HID_SendReport(&USB_Device_dev, 0, 0) == USBD_OK) {
+#else
   if (USBD_HID_SendReport(&USB_OTG_dev, 0, 0) == USBD_OK) {
+#endif
     //buttons
     HID_Buffer[0] = 0;
     HID_Buffer[1] = 0;
@@ -140,10 +185,10 @@ void usbJoystickUpdate()
       if ( channelOutputs[i+8] > 0 ) {
         HID_Buffer[0] |= (1 << i);
       }
-      if ( channelOutputs[i+16] > 0 ) {
+      if ( MAX_OUTPUT_CHANNELS>=24 && channelOutputs[i+16] > 0 ) {
         HID_Buffer[1] |= (1 << i);
       }
-      if ( channelOutputs[i+24] > 0 ) {
+      if ( MAX_OUTPUT_CHANNELS>=32 && channelOutputs[i+24] > 0 ) {
         HID_Buffer[2] |= (1 << i);
       }
     }
@@ -151,12 +196,25 @@ void usbJoystickUpdate()
     //analog values
     //uint8_t * p = HID_Buffer + 1;
     for (int i = 0; i < 8; ++i) {
-      int16_t value = channelOutputs[i] / 8;
-      if ( value > 127 ) value = 127;
-      else if ( value < -127 ) value = -127;
-      HID_Buffer[i+3] = static_cast<int8_t>(value);
+
+      int16_t value = channelOutputs[i] + 1024;
+      if ( value > 2047 ) value = 2047;
+      else if ( value < 0 ) value = 0;
+#if defined(PCBI6X)
+      HID_Buffer[i*2 +2] = static_cast<uint8_t>(value & 0xFF);
+      HID_Buffer[i*2 +3] = static_cast<uint8_t>((value >> 8) & 0x07);
+#else
+      HID_Buffer[i*2 +3] = static_cast<uint8_t>(value & 0xFF);
+      HID_Buffer[i*2 +4] = static_cast<uint8_t>((value >> 8) & 0x07);
+#endif
+
     }
+
+#if defined(STM32F0)
+    USBD_HID_SendReport(&USB_Device_dev, HID_Buffer, HID_IN_PACKET);
+#else
     USBD_HID_SendReport(&USB_OTG_dev, HID_Buffer, HID_IN_PACKET);
+#endif
   }
 }
-#endif
+#endif // BOOT

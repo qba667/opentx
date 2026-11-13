@@ -27,18 +27,28 @@
 
 #define USBD_CFG_MAX_NUM           1
 #define USBD_ITF_MAX_NUM           1
+#if defined(PCBI6X)
+#define USB_MAX_STR_DESC_SIZ       (21 * 2) + 2 // max usb desc * 2 + 2
+#else
 #define USB_MAX_STR_DESC_SIZ       64
+#endif
 
 #define USBD_SELF_POWERED
 
 /* Class Layer Parameter */
 
 #define MSC_IN_EP                    0x81
+#if defined(STM32F0)
+#define MSC_OUT_EP                   0x02
+#else
 #define MSC_OUT_EP                   0x01
+#endif
 #define MSC_MAX_PACKET               64
 
 // Save some RAM on smaller STM32 processors. Slightly lowers USB mass storage speed
 #if defined(STM32F2) && !defined(BOOT)
+#define MSC_MEDIA_PACKET             512
+#elif defined(STM32F0)
 #define MSC_MEDIA_PACKET             512
 #else
 #define MSC_MEDIA_PACKET             4096
@@ -47,7 +57,11 @@
 #define HID_IN_EP                    0x81
 #define HID_OUT_EP                   0x01
 
-#define HID_IN_PACKET                11
+#if defined(PCBI6X)
+#define HID_IN_PACKET                18
+#else
+#define HID_IN_PACKET                19
+#endif
 #define HID_OUT_PACKET               9
 
 #define CDC_IN_EP                    0x81  /* EP1 for data IN */
@@ -58,8 +72,10 @@
 #define CDC_DATA_MAX_PACKET_SIZE     64   /* Endpoint IN & OUT Packet size */
 #define CDC_CMD_PACKET_SZE           8    /* Control Endpoint Packet size */
 
-#define CDC_IN_FRAME_INTERVAL        5    /* Number of frames between IN transfers */
-#define APP_RX_DATA_SIZE             512 // USB serial port output buffer. TODO: tune this buffer size /* Total size of IN buffer: APP_RX_DATA_SIZE*8/MAX_BAUDARATE*1000 should be > CDC_IN_FRAME_INTERVAL */
+#define CDC_IN_FRAME_INTERVAL        4    /* Number of frames between IN transfers */
+
+#define APP_TX_DATA_SIZE             512 // USB serial port output buffer. TODO: tune this buffer size /* Total size of IN buffer: APP_TX_DATA_SIZE*8/MAX_BAUDARATE*1000 should be > CDC_IN_FRAME_INTERVAL */
+
 #define APP_FOPS                     VCP_fops
 
 #endif // _USBD_CONF_H_

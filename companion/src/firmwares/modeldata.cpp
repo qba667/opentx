@@ -28,29 +28,30 @@
 
 QString removeAccents(const QString & str)
 {
-  QString result = str;
-
   // UTF-8 ASCII Table
-  const QString tA[] = { "á", "â", "ã", "à", "ä" };
-  const QString tE[] = { "é", "è", "ê", "ě" };
-  const QString tI[] = { "í" };
-  const QString tO[] = { "ó", "ô", "õ", "ö" };
-  const QString tU[] = { "ú", "ü" };
-  const QString tC[] = { "ç" };
-  const QString tY[] = { "ý" };
-  const QString tS[] = { "š" };
-  const QString tR[] = { "ř" };
+  static const QHash<QString, QVariant> map = {
+    {"a", QRegularExpression("[áâãàä]")},
+    {"A", QRegularExpression("[ÁÂÃÀÄ]")},
+    {"e", QRegularExpression("[éèêě]")},
+    {"E", QRegularExpression("[ÉÈÊĚ]")},
+    {"o", QRegularExpression("[óôõö]")},
+    {"O", QRegularExpression("[ÓÔÕÖ]")},
+    {"u", QRegularExpression("[úü]")},
+    {"U", QRegularExpression("[ÚÜ]")},
+    {"i", "í"}, {"I", "Í"},
+    {"c", "ç"}, {"C", "Ç"},
+    {"y", "ý"}, {"Y", "Ý"},
+    {"s", "š"}, {"S", "Š"},
+    {"r", "ř"}, {"R", "Ř"}
+  };
 
-  for (unsigned int i = 0; i < DIM(tA); i++) result.replace(tA[i], "a");
-  for (unsigned int i = 0; i < DIM(tE); i++) result.replace(tE[i], "e");
-  for (unsigned int i = 0; i < DIM(tI); i++) result.replace(tI[i], "i");
-  for (unsigned int i = 0; i < DIM(tO); i++) result.replace(tO[i], "o");
-  for (unsigned int i = 0; i < DIM(tU); i++) result.replace(tU[i], "u");
-  for (unsigned int i = 0; i < DIM(tC); i++) result.replace(tC[i], "c");
-  for (unsigned int i = 0; i < DIM(tY); i++) result.replace(tY[i], "y");
-  for (unsigned int i = 0; i < DIM(tS); i++) result.replace(tS[i], "s");
-  for (unsigned int i = 0; i < DIM(tR); i++) result.replace(tR[i], "r");
-
+  QString result(str);
+  for (QHash<QString, QVariant>::const_iterator it = map.cbegin(), en = map.cend(); it != en; ++it) {
+    if (it.value().canConvert<QRegularExpression>())
+      result.replace(it.value().toRegularExpression(), it.key());
+    else
+      result.replace(it.value().toString(), it.key());
+  }
   return result;
 }
 
@@ -83,7 +84,7 @@ ModelData::ModelData(const ModelData & src)
 
 ModelData & ModelData::operator = (const ModelData & src)
 {
-  memcpy(this, &src, sizeof(ModelData));
+  memcpy(reinterpret_cast<void *>(this), &src, sizeof(ModelData));
   return *this;
 }
 
@@ -151,7 +152,7 @@ QVector<const MixData *> ModelData::mixes(int channel) const
   return result;
 }
 
-void ModelData::removeInput(const int idx)
+void ModelData::removeInput(const int idx, bool clearName)
 {
   unsigned int chn = expoData[idx].chn;
 
@@ -159,15 +160,8 @@ void ModelData::removeInput(const int idx)
   expoData[CPN_MAX_EXPOS-1].clear();
 
   //also remove input name if removing last line for this input
-  bool found = false;
-  for (int i=0; i<CPN_MAX_EXPOS; i++) {
-    if (expoData[i].mode==0) continue;
-    if (expoData[i].chn==chn) {
-      found = true;
-      break;
-    }
-  }
-  if (!found) inputNames[chn][0] = 0;
+  if (clearName && !expos(chn).size())
+    inputNames[chn][0] = 0;
 }
 
 void ModelData::clearInputs()
@@ -191,27 +185,16 @@ void ModelData::clearMixes()
 
 void ModelData::clear()
 {
-  memset(this, 0, sizeof(ModelData));
+  memset(reinterpret_cast<void *>(this), 0, sizeof(ModelData));
   modelIndex = -1;  // an invalid index, this is managed by the TreeView data model
+  moduleData[0].protocol = PULSES_OFF;
+  moduleData[1].protocol = PULSES_OFF;
   moduleData[0].channelsCount = 8;
   moduleData[1].channelsStart = 0;
   moduleData[1].channelsCount = 8;
   moduleData[0].ppm.delay = 300;
   moduleData[1].ppm.delay = 300;
-  moduleData[2].ppm.delay = 300;
-  int board = getCurrentBoard();
-  if (IS_HORUS_OR_TARANIS(board)) {
-    moduleData[0].protocol = PULSES_PXX_XJT_X16;
-    moduleData[1].protocol = PULSES_OFF;
-  }
-  else if (IS_SKY9X(board)) {
-    moduleData[0].protocol = PULSES_PPM;
-    moduleData[1].protocol = PULSES_PPM;
-  }
-  else {
-    moduleData[0].protocol = PULSES_PPM;
-    moduleData[1].protocol = PULSES_OFF;
-  }
+  moduleData[2].ppm.delay = 300; // Trainer PPM
   for (int i=0; i<CPN_MAX_FLIGHT_MODES; i++) {
     flightModeData[i].clear(i);
   }
@@ -453,5 +436,9 @@ void ModelData::convert(RadioDataConversionState & cstate)
 
   for (int i=0; i<CPN_MAX_FLIGHT_MODES; i++) {
     flightModeData[i].convert(cstate.withComponentIndex(i));
+  }
+
+  for (int i=0; i<CPN_MAX_MODULES; i++) {
+    moduleData[i].convert(cstate.withComponentIndex(i));
   }
 }

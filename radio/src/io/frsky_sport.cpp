@@ -69,7 +69,7 @@ void sportOutputPushPacket(SportTelemetryPacket * packet)
 {
   uint16_t crc = 0;
 
-  for (uint8_t i=1; i<sizeof(SportTelemetryPacket); i++) {
+  for (uint32_t i=1; i<sizeof(SportTelemetryPacket); i++) {
     uint8_t byte = packet->raw[i];
     sportOutputPushByte(byte);
     crc += byte; // 0-1FF
@@ -123,7 +123,8 @@ void sportProcessUpdatePacket(uint8_t * packet)
 bool sportWaitState(SportUpdateState state, int timeout)
 {
 #if defined(SIMU)
-  SIMU_SLEEP_NORET(1);
+  UNUSED(state);
+  UNUSED(timeout);
   return true;
 #else
   watchdogSuspend(timeout / 10);
@@ -138,7 +139,7 @@ bool sportWaitState(SportUpdateState state, int timeout)
     else if (sportUpdateState == SPORT_FAIL) {
       return false;
     }
-    CoTickDelay(1);
+    sleep_ms(1);
   }
   return false;
 #endif
@@ -175,11 +176,13 @@ const char * sportUpdatePowerOn(ModuleIndex module)
   sportUpdateState = SPORT_POWERUP_REQ;
   sportWaitState(SPORT_IDLE, 500); // Clear the fifo
 
-  telemetryInit(PROTOCOL_FRSKY_SPORT);
+  telemetryInit(PROTOCOL_TELEMETRY_FRSKY_SPORT);
 
 #if defined(PCBTARANIS) || defined(PCBHORUS)
   if (module == INTERNAL_MODULE)
     INTERNAL_MODULE_ON();
+  else if (module == EXTERNAL_MODULE)
+    EXTERNAL_MODULE_ON();
   else
     SPORT_UPDATE_POWER_ON();
 #endif
@@ -196,7 +199,7 @@ const char * sportUpdatePowerOn(ModuleIndex module)
       return NULL;
   }
 
-  if (telemetryProtocol != PROTOCOL_FRSKY_SPORT) {
+  if (telemetryProtocol != PROTOCOL_TELEMETRY_FRSKY_SPORT) {
     return TR("Not responding", "Not S.Port 1");
   }
 
@@ -307,10 +310,11 @@ void sportFlashDevice(ModuleIndex module, const char * filename)
   uint8_t extPwr = IS_EXTERNAL_MODULE_ON();
   INTERNAL_MODULE_OFF();
   EXTERNAL_MODULE_OFF();
+  SPORT_UPDATE_POWER_OFF();
 
   /* wait 2s off */
   watchdogSuspend(2000);
-  CoTickDelay(1000);
+  sleep_ms(2000);
 #endif
 
   const char * result = sportUpdatePowerOn(module);
@@ -325,6 +329,7 @@ void sportFlashDevice(ModuleIndex module, const char * filename)
 
 #if defined(PCBTARANIS) || defined(PCBHORUS)
   INTERNAL_MODULE_OFF();
+  EXTERNAL_MODULE_OFF();
   SPORT_UPDATE_POWER_OFF();
 #endif
 

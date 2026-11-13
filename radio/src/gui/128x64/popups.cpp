@@ -20,47 +20,44 @@
 
 #include "opentx.h"
 
-const pm_char * warningText = NULL;
-const pm_char * warningInfoText;
+const char * warningText = nullptr;
+const char * warningInfoText;
 uint8_t         warningInfoLength;
 uint8_t         warningType;
 uint8_t         warningResult = 0;
 
-#if defined(CPUARM)
 uint8_t         warningInfoFlags = ZCHAR;
-int16_t         warningInputValue;
-int16_t         warningInputValueMin;
-int16_t         warningInputValueMax;
-#endif
 
 void drawMessageBox()
 {
-  lcdDrawFilledRect(10, 16, LCD_W-20, 40, SOLID, ERASE);
-  lcdDrawRect(10, 16, LCD_W-20, 40);
-#if defined(CPUARM)
+  lcdDrawFilledRect(MESSAGEBOX_X - 1, MESSAGEBOX_Y - 1, MESSAGEBOX_W + 2, 48 + 2, SOLID, ERASE);
+  lcdDrawRect(MESSAGEBOX_X, MESSAGEBOX_Y, MESSAGEBOX_W, 48);
   lcdDrawSizedText(WARNING_LINE_X, WARNING_LINE_Y, warningText, WARNING_LINE_LEN);
-#else
-  lcdDrawText(WARNING_LINE_X, WARNING_LINE_Y, warningText);
-#endif
   // could be a place for a warningInfoText
 }
 
-void showMessageBox(const pm_char * str)
+void showMessageBox(const char * str)
 {
   warningText = str;
   drawMessageBox();
-  warningText = NULL;
-  lcdRefresh();
+  warningText = nullptr;
+  // lcdRefresh();
 }
 
-const pm_uchar ASTERISK_BITMAP[] PROGMEM = {
+const unsigned char ASTERISK_BITMAP[]  = {
 #include "asterisk.lbm"
 };
 
-void drawAlertBox(const pm_char * title, const pm_char * text, const char * action)
+void drawAlertBox(const char * title, const char * text, const char * action)
 {
   lcdClear();
+
+#if defined(DEBUG) || (defined(DFPLAYER) && (defined(TRANSLATIONS_CZ) || defined(TRANSLATIONS_PT))) // saves ~140B
+  lcdDrawRect(2, 2, 32 - 4, 32 - 4);
+  lcdDrawChar(11, 6, 'x', DBLSIZE);
+#else
   lcdDraw1bitBitmap(2, 0, ASTERISK_BITMAP, 0, 0);
+#endif
 
 #define MESSAGE_LCD_OFFSET   6*FW
 
@@ -83,7 +80,7 @@ void drawAlertBox(const pm_char * title, const pm_char * text, const char * acti
 #undef MESSAGE_LCD_OFFSET
 }
 
-void showAlertBox(const pm_char * title, const pm_char * text, const char * action ALERT_SOUND_ARG)
+void showAlertBox(const char * title, const char * text, const char * action , uint8_t sound)
 {
   drawAlertBox(title, text, action);
   
@@ -91,8 +88,8 @@ void showAlertBox(const pm_char * title, const pm_char * text, const char * acti
   
   lcdRefresh();
   lcdSetContrast();
-  clearKeyEvents();
-  backlightOn();
+  waitKeysReleased();
+  resetBacklightTimeout();
   checkBacklight();
 }
 
@@ -101,9 +98,10 @@ void runPopupWarning(event_t event)
   warningResult = false;
   drawMessageBox();
   if (warningInfoText) {
-    lcdDrawSizedText(WARNING_LINE_X, WARNING_LINE_Y+FH, warningInfoText, warningInfoLength, WARNING_INFO_FLAGS);
+    lcdDrawSizedText(WARNING_LINE_X, WARNING_LINE_Y+FH, warningInfoText, warningInfoLength, warningInfoFlags);
   }
-  lcdDrawText(WARNING_LINE_X, WARNING_LINE_Y+2*FH, warningType == WARNING_TYPE_ASTERISK ? STR_EXIT : STR_POPUPS);
+  lcdDrawText(WARNING_LINE_X, WARNING_LINE_Y+4*FH+2, warningType == WARNING_TYPE_ASTERISK ? STR_EXIT : STR_POPUPS_ENTER_EXIT);
+  
   switch (event) {
     case EVT_KEY_BREAK(KEY_ENTER):
       if (warningType == WARNING_TYPE_ASTERISK)
@@ -114,13 +112,92 @@ void runPopupWarning(event_t event)
       warningText = NULL;
       warningType = WARNING_TYPE_ASTERISK;
       break;
-#if defined(CPUARM)
-    default:
-      if (warningType != WARNING_TYPE_INPUT) break;
-      s_editMode = EDIT_MODIFY_FIELD;
-      warningInputValue = checkIncDec(event, warningInputValue, warningInputValueMin, warningInputValueMax);
-      s_editMode = EDIT_SELECT_FIELD;
-      break;
-#endif
   }
+}
+
+void POPUP_WARNING(const char * s)
+{
+  // killAllEvents();
+  warningText = s;
+  warningInfoText = nullptr;
+  warningType = WARNING_TYPE_ASTERISK;
+  popupFunc = runPopupWarning;
+}
+
+void POPUP_CONFIRMATION(const char * s/*, PopupMenuHandler handler*/)
+{
+  if (s != warningText) {
+    // killAllEvents();
+    warningText = s;
+    warningInfoText = nullptr;
+    warningType = WARNING_TYPE_CONFIRM;
+    popupFunc = runPopupWarning;
+    // popupMenuHandler = handler;
+  }
+}
+
+void POPUP_INPUT(const char * s, PopupFunc func)
+{
+  // killAllEvents();
+  warningText = s;
+  warningInfoText = nullptr;
+  warningType = WARNING_TYPE_INPUT;
+  popupFunc = func;
+}
+
+void SET_WARNING_INFO(const char * info, uint8_t length, uint8_t flags)
+{
+  warningInfoText = info;
+  warningInfoLength = length;
+  warningInfoFlags = flags;
+}
+
+bool isEventCaughtByPopup()
+{
+  if (warningText /*&& warningType != WARNING_TYPE_WAIT*/)
+    return true;
+
+  if (popupMenuItemsCount > 0)
+    return true;
+
+  return false;
+}
+
+void POPUP_MENU_ADD_ITEM(const char * s)
+{
+  popupMenuOffsetType = MENU_OFFSET_INTERNAL;
+  if (popupMenuItemsCount < POPUP_MENU_MAX_LINES) {
+    popupMenuItems[popupMenuItemsCount++] = s;
+  }
+}
+
+void POPUP_MENU_SELECT_ITEM(uint8_t index)
+{
+  popupMenuSelectedItem =  (index > 0 ? (index < popupMenuItemsCount ? index : popupMenuItemsCount) : 0);
+}
+
+void POPUP_MENU_TITLE(const char * s)
+{
+  popupMenuTitle = s;
+}
+
+void POPUP_MENU_START(PopupMenuHandler handler)
+{
+  if (handler != popupMenuHandler) {
+    // killAllEvents();
+    AUDIO_KEY_PRESS();
+    popupMenuHandler = handler;
+  }
+}
+
+void POPUP_MENU_START(PopupMenuHandler handler, int count, ...)
+{
+  va_list ap;
+  va_start(ap, count);
+  for(int i = 0; i < count; i += 1) {
+      const char* s = va_arg(ap, const char*);
+      POPUP_MENU_ADD_ITEM(s);
+  }
+  va_end(ap);
+  POPUP_MENU_START(handler);
 }

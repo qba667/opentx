@@ -177,7 +177,7 @@ void menuStatisticsDebug(event_t event)
   lcdDrawTextAlignedLeft(MENU_DEBUG_ROW4, "Usb");
   lcdDrawNumber(MENU_DEBUG_COL1_OFS, MENU_DEBUG_ROW4, charsWritten, LEFT);
   lcdDrawText(lcdLastRightPos, MENU_DEBUG_ROW4, " ");
-  lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_ROW4, APP_Rx_ptr_in, LEFT);
+  lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_ROW4, APP_Tx_ptr_in, LEFT);
   lcdDrawText(lcdLastRightPos, MENU_DEBUG_ROW4, " ");
   lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_ROW4, APP_Rx_ptr_out, LEFT);
   lcdDrawText(lcdLastRightPos, MENU_DEBUG_ROW4, " ");
@@ -276,7 +276,7 @@ void menuTraceBuffer(event_t event)
   lcdDrawText(14*FW, FH, "Event");
   lcdDrawText(20*FW, FH, "Data");
 
-  for (uint8_t i=0; i<LCD_LINES-2; i++) {
+  for (uint32_t i=0; i<LCD_LINES-2; i++) {
     y = 1 + (i+2)*FH;
     k = i+menuVerticalOffset;
 
@@ -286,7 +286,7 @@ void menuTraceBuffer(event_t event)
     const struct TraceElement * te = getTraceElement(k);
     if (te) {
       //time
-      putstime_t tme = te->time % SECS_PER_DAY;
+      int32_t tme = te->time % SECS_PER_DAY;
       drawTimer(4*FW, y, tme, TIMEHOUR|LEFT, TIMEHOUR|LEFT);
       //event
       lcdDrawNumber(14*FW, y, te->event, LEADING0|LEFT, 3);

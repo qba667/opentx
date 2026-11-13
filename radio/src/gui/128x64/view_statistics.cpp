@@ -47,22 +47,21 @@ void menuStatisticsView(event_t event)
 #endif
       break;
 
-#if defined(CPUARM)
-    case EVT_KEY_LONG(KEY_MENU):      // historical
-#if !defined(PCBSKY9X)
+#if !defined(PCBTARANIS)
+    case EVT_KEY_LONG(KEY_MENU): // historical
+#endif
+#if !defined(PCBI6X)
     case EVT_KEY_LONG(KEY_ENTER):
 #endif
       g_eeGeneral.globalTimer = 0;
       storageDirty(EE_GENERAL);
       sessionTimer = 0;
       break;
-#endif
     case EVT_KEY_FIRST(KEY_EXIT):
       chainMenu(menuMainView);
       break;
   }
 
-#if defined(CPUARM)
   // Session and Total timers
   lcdDrawText(STATS_1ST_COLUMN, FH*1+1, "SES", BOLD);
   drawTimer(STATS_1ST_COLUMN + STATS_LABEL_WIDTH, FH*1+1, sessionTimer, 0, 0);
@@ -83,17 +82,6 @@ void menuStatisticsView(event_t event)
     else
       drawTimer(STATS_3RD_COLUMN + STATS_LABEL_WIDTH, FH*i+1, timersStates[i].val, 0, 0);
   }
-#else
-  lcdDrawText(  1*FW, FH*0, STR_TOTTM1TM2THRTHP);
-
-  drawTimer(    5*FW+5*FWNUM+1, FH*1, timersStates[0].val, RIGHT, 0);
-  drawTimer(   12*FW+5*FWNUM+1, FH*1, timersStates[1].val, RIGHT, 0);
-
-  drawTimer(    5*FW+5*FWNUM+1, FH*2, s_timeCumThr, RIGHT, 0);
-  drawTimer(   12*FW+5*FWNUM+1, FH*2, s_timeCum16ThrP/16, RIGHT, 0);
-
-  drawTimer(   12*FW+5*FWNUM+1, FH*0, sessionTimer, RIGHT, 0);
-#endif
 
 #if defined(THRTRACE)
   const coord_t x = 5;
@@ -112,54 +100,36 @@ void menuStatisticsView(event_t event)
 #endif
 }
 
-#if defined(CPUARM)
-  #define MENU_DEBUG_COL1_OFS          (11*FW-3)
-  #define MENU_DEBUG_COL2_OFS          (17*FW)
-  #define MENU_DEBUG_Y_CURRENT         (1*FH)
-  #define MENU_DEBUG_ROW1              (1*FH+1)
-  #define MENU_DEBUG_ROW2              (2*FH+1)
-  #define MENU_DEBUG_Y_MAH             (2*FH)
-  #define MENU_DEBUG_Y_CPU_TEMP        (3*FH)
-  #define MENU_DEBUG_Y_COPROC          (4*FH)
-  #define MENU_DEBUG_Y_MIXMAX          (5*FH)
-  #define MENU_DEBUG_Y_RTOS            (6*FH)
-  #define MENU_DEBUG_Y_USB             (2*FH)
-  #define MENU_DEBUG_Y_LUA             (3*FH)
-  #define MENU_DEBUG_Y_FREE_RAM        (4*FH)
-#else
-  #define MENU_DEBUG_COL1_OFS          (14*FW)
-#endif
+#define MENU_DEBUG_COL1_OFS          (11*FW-3)
+#define MENU_DEBUG_COL2_OFS          (17*FW)
 
 void menuStatisticsDebug(event_t event)
 {
   TITLE(STR_MENUDEBUG);
 
   switch (event) {
-#if defined(CPUARM)
     case EVT_KEY_LONG(KEY_ENTER):
-#if defined(PCBSKY9X)
-      g_eeGeneral.mAhUsed = 0;
-      Current_used = 0;
-#endif
       g_eeGeneral.globalTimer = 0;
       sessionTimer = 0;
       storageDirty(EE_GENERAL);
       killEvents(event);
       break;
-#endif
 
     case EVT_KEY_FIRST(KEY_ENTER):
-#if !defined(CPUARM)
-      g_tmr1Latency_min = 0xff;
-      g_tmr1Latency_max = 0;
+    //   telemetryErrors = 0;
+      maxMixerDuration = 0;
+#if defined(TELEMETRY_STATS)
+      telemetryStatsRto = 0;
+      telemetryStatsFrames = 0;
 #endif
-      maxMixerDuration  = 0;
       break;
 
 
     case EVT_KEY_FIRST(KEY_UP):
 #if defined(PCBX7)
     case EVT_KEY_BREAK(KEY_PAGE):
+#endif
+#if !defined(PCBI6X) // single debug screen
       chainMenu(menuStatisticsDebug2);
       return;
 #endif
@@ -177,113 +147,135 @@ void menuStatisticsDebug(event_t event)
       break;
   }
 
-#if defined(PCBSKY9X)
-  if ((ResetReason&RSTC_SR_RSTTYP) == (2<<8)) {
-    lcdDrawText(LCD_W-8*FW, 0*FH, "WATCHDOG");
-  }
-  else if (unexpectedShutdown) {
-    lcdDrawText(LCD_W-13*FW, 0*FH, "UNEXP.SHTDOWN");
-  }
+  uint8_t y = FH + 1;
+
+#if defined(PCBI6X) && defined(TLM_ERRORS) // single debug screen
+  lcdDrawTextAlignedLeft(y, "Tlm RX Err");
+  lcdDrawNumber(MENU_DEBUG_COL1_OFS + FW, y, telemetryErrors, RIGHT);
+  y += FH;
 #endif
 
-#if defined(TX_CAPACITY_MEASUREMENT)
-  // current
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_CURRENT, STR_CPU_CURRENT);
-  drawValueWithUnit(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_CURRENT, getCurrent(), UNIT_MILLIAMPS, LEFT);
-  uint32_t current_scale = 488 + g_eeGeneral.txCurrentCalibration;
-  lcdDrawChar(MENU_DEBUG_COL2_OFS, MENU_DEBUG_Y_CURRENT, '>');
-  drawValueWithUnit(MENU_DEBUG_COL2_OFS+FW+1, MENU_DEBUG_Y_CURRENT, Current_max*10*current_scale/8192, UNIT_RAW, LEFT);
-  // consumption
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_MAH, STR_CPU_MAH);
-  drawValueWithUnit(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_MAH, g_eeGeneral.mAhUsed + Current_used*current_scale/8192/36, UNIT_MAH, LEFT|PREC1);
-#endif
-
-#if defined(PCBSKY9X)
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_CPU_TEMP, STR_CPU_TEMP);
-  drawValueWithUnit(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_CPU_TEMP, getTemperature(), UNIT_TEMPERATURE, LEFT);
-  lcdDrawChar(MENU_DEBUG_COL2_OFS, MENU_DEBUG_Y_CPU_TEMP, '>');
-  drawValueWithUnit(MENU_DEBUG_COL2_OFS+FW+1, MENU_DEBUG_Y_CPU_TEMP, maxTemperature+g_eeGeneral.temperatureCalib, UNIT_TEMPERATURE, LEFT);
-#endif
-
-#if defined(COPROCESSOR)
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_COPROC, STR_COPROC_TEMP);
-
-  if (Coproc_read==0) {
-    lcdDrawText(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_COPROC, PSTR("Co Proc NACK"),INVERS);
-  }
-  else if (Coproc_read==0x81) {
-    lcdDrawText(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_COPROC, PSTR("Inst.TinyApp"),INVERS);
-  }
-  else if (Coproc_read<3) {
-    lcdDrawText(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_COPROC, PSTR("Upgr.TinyApp"),INVERS);
-  }
-  else {
-    drawValueWithUnit(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_COPROC, Coproc_temp, UNIT_TEMPERATURE, LEFT);
-    drawValueWithUnit(MENU_DEBUG_COL2_OFS, MENU_DEBUG_Y_COPROC, Coproc_maxtemp, UNIT_TEMPERATURE, LEFT);
-  }
-#endif
-
-#if defined(PCBTARANIS)
+#if defined(PCBTARANIS) //|| defined(PCBI6X)
 #if !defined(SIMU) && defined(DEBUG)
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_USB, "Usb");
-  lcdDrawNumber(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_USB, charsWritten, LEFT);
-  lcdDrawText(lcdLastRightPos, MENU_DEBUG_Y_USB, " ");
-  lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_Y_USB, APP_Rx_ptr_in, LEFT);
-  lcdDrawText(lcdLastRightPos, MENU_DEBUG_Y_USB, " ");
-  lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_Y_USB, APP_Rx_ptr_out, LEFT);
-  lcdDrawText(lcdLastRightPos, MENU_DEBUG_Y_USB, " ");
-  lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_Y_USB, usbWraps, LEFT);
+  lcdDrawTextAlignedLeft(y, "Usb");
+  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, charsWritten, LEFT);
+  lcdDrawText(lcdLastRightPos, y, " ");
+  lcdDrawNumber(lcdLastRightPos, y, APP_Tx_ptr_in, LEFT);
+  lcdDrawText(lcdLastRightPos, y, " ");
+  lcdDrawNumber(lcdLastRightPos, y, APP_Rx_ptr_out, LEFT);
+  lcdDrawText(lcdLastRightPos, y, " ");
+  lcdDrawNumber(lcdLastRightPos, y, usbWraps, LEFT);
+  y += FH;
 #endif
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_FREE_RAM, "Free Mem");
-  lcdDrawNumber(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_FREE_RAM, availableMemory(), LEFT);
-  lcdDrawText(lcdLastRightPos, MENU_DEBUG_Y_FREE_RAM, "b");
-#if defined(LUA)
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_LUA, "Lua scripts");
-  lcdDrawText(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_LUA+1, "[D]", SMLSIZE);
-  lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_Y_LUA, 10*maxLuaDuration, LEFT);
-  lcdDrawText(lcdLastRightPos+2, MENU_DEBUG_Y_LUA+1, "[I]", SMLSIZE);
-  lcdDrawNumber(lcdLastRightPos, MENU_DEBUG_Y_LUA, 10*maxLuaInterval, LEFT);
-#endif // LUA
+  lcdDrawTextAlignedLeft(y, "Free Mem");
+  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, availableMemory(), LEFT);
+  lcdDrawText(lcdLastRightPos, y, "b");
+  y += FH;
 #endif // PCBTARANIS
 
-#if defined(CPUARM)
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_MIXMAX, STR_TMIXMAXMS);
-  lcdDrawNumber(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_MIXMAX, DURATION_MS_PREC2(maxMixerDuration), PREC2|LEFT);
-  lcdDrawText(lcdLastRightPos, MENU_DEBUG_Y_MIXMAX, "ms");
+//  lcdDrawTextAlignedLeft(y, "Stack");
+//  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, stackAvailable(), LEFT);
+//  lcdDrawText(lcdLastRightPos, y, "/");
+//  lcdDrawNumber(lcdLastRightPos, y, stackSize() * 4, LEFT);
+//  y += FH;
+
+//  lcdDrawTextAlignedLeft(y, "USB Conn");
+//  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, ((GPIOA->IDR & GPIO_IDR_11) ? 1 : 0), LEFT);
+//  y += FH;
+
+  lcdDrawTextAlignedLeft(y, STR_TMIXMAXMS);
+  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, DURATION_MS_PREC2(maxMixerDuration), PREC2|LEFT);
+  lcdDrawText(lcdLastRightPos, y, "ms");
+  y += FH;
+
+  lcdDrawTextAlignedLeft(y, STR_FREESTACKMINB);
+  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, task_get_stack_usage(&menusTaskId), LEFT);
+  lcdDrawText(lcdLastRightPos, y, "/");
+  lcdDrawNumber(lcdLastRightPos, y, task_get_stack_usage(&mixerTaskId), LEFT);
+  lcdDrawText(lcdLastRightPos, y, "/");
+  lcdDrawNumber(lcdLastRightPos, y, task_get_stack_usage(&timerTaskId), LEFT);
+
+#if defined(TASK_CPU_STATS)
+  y += FH;
+  {
+    // 1 s snapshot over the idle / task CPU time counters
+    const uint32_t winMs = 1000u;
+    static uint32_t lastTotal = 0, lastIdle = 0;
+    static uint16_t cpuPc = 0, idleMs = 0;
+    // same order as the stack line: menus / mixer / timer
+    task_handle_t * const tasks[3] = {&menusTaskId, &mixerTaskId, &timerTaskId};
+    static uint32_t lastTask[3];
+    static uint16_t taskPm[3];         // per mille of the window
+    uint32_t total = time_get_ms();
+    uint32_t idle = task_get_idle_time();
+    uint32_t dTotal = total - lastTotal;
+    if (dTotal >= winMs) {
+      bool stale = dTotal > 10u * winMs;
+      uint32_t unitsPerMille = dTotal * TASK_CPU_UNITS_PER_MS / 1000u;
+      for (uint8_t i = 0; i < 3; i++) {
+        uint32_t t = task_get_cpu_time(tasks[i]);
+        if (!stale) {
+          uint32_t pm = (t - lastTask[i]) / unitsPerMille;
+          taskPm[i] = (uint16_t)(pm > 1000 ? 1000 : pm);
+        }
+        lastTask[i] = t;
+      }
+      if (stale) {
+        // stale baseline (screen just opened): reseed, skip this round
+        lastTotal = total;
+        lastIdle = idle;
+      }
+      else {
+        uint32_t dIdle = (idle - lastIdle) / TASK_CPU_UNITS_PER_MS;
+        if (dIdle > dTotal)
+          dIdle = dTotal;                      // tick raced the two reads
+        idleMs = (uint16_t)dIdle;
+        cpuPc = (uint16_t)(100u - (100u * dIdle) / dTotal);
+        lastTotal = total;
+        lastIdle = idle;
+      }
+    }
+    lcdDrawTextAlignedLeft(y, "CPU");
+    lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, cpuPc, LEFT);
+    lcdDrawText(lcdLastRightPos, y, "% ");
+    lcdDrawNumber(lcdLastRightPos, y, idleMs, LEFT);
+    lcdDrawText(lcdLastRightPos, y, "ms");
+//#if defined(RTOS_HAS_TASK_STATS)
+    // CPU % per task, 0.1 % resolution (ISR time goes to the interrupted task)
+    y += FH;
+    lcdDrawTextAlignedLeft(y, "Task%");
+    lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, taskPm[0], PREC1|LEFT);
+    for (uint8_t i = 1; i < 3; i++) {
+      lcdDrawText(lcdLastRightPos, y, "/");
+      lcdDrawNumber(lcdLastRightPos, y, taskPm[i], PREC1|LEFT);
+    }
+//#endif
+  }
 #endif
 
-#if defined(CPUARM)
-  lcdDrawTextAlignedLeft(MENU_DEBUG_Y_RTOS, STR_FREESTACKMINB);
-  lcdDrawNumber(MENU_DEBUG_COL1_OFS, MENU_DEBUG_Y_RTOS, menusStack.available(), UNSIGN|LEFT);
-  lcdDrawText(lcdLastRightPos, MENU_DEBUG_Y_RTOS, "/");
-  lcdDrawNumber(lcdLastRightPos+1, MENU_DEBUG_Y_RTOS, mixerStack.available(), UNSIGN|LEFT);
-  lcdDrawText(lcdLastRightPos, MENU_DEBUG_Y_RTOS, "/");
-  lcdDrawNumber(lcdLastRightPos+1, MENU_DEBUG_Y_RTOS, audioStack.available(), UNSIGN|LEFT);
-#else
-  lcdDrawTextAlignedLeft(1*FH, STR_TMR1LATMAXUS);
-  lcdDraw8bitsNumber(MENU_DEBUG_COL1_OFS , 1*FH, g_tmr1Latency_max/2 );
-  lcdDrawTextAlignedLeft(2*FH, STR_TMR1LATMINUS);
-  lcdDraw8bitsNumber(MENU_DEBUG_COL1_OFS , 2*FH, g_tmr1Latency_min/2 );
-  lcdDrawTextAlignedLeft(3*FH, STR_TMR1JITTERUS);
-  lcdDraw8bitsNumber(MENU_DEBUG_COL1_OFS , 3*FH, (g_tmr1Latency_max - g_tmr1Latency_min) /2 );
-  lcdDrawTextAlignedLeft(4*FH, STR_TMIXMAXMS);
-  lcdDrawNumber(MENU_DEBUG_COL1_OFS, 4*FH, DURATION_MS_PREC2(maxMixerDuration), PREC2);
-  lcdDrawTextAlignedLeft(5*FH, STR_FREESTACKMINB);
-  lcdDrawNumber(14*FW, 5*FH, stackAvailable(), UNSIGN) ;
+#if defined(TELEMETRY_STATS)
+  // USART receiver timeouts, then frames parsed OK.
+  // Expected with RTO working (CRSF): RTO ~= Frm (+ junk bursts).
+  y += FH;
+  lcdDrawTextAlignedLeft(y, "Tlm RTO");
+  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, telemetryStatsRto, LEFT);
+  y += FH;
+  lcdDrawTextAlignedLeft(y, "Tlm Frm");
+  lcdDrawNumber(MENU_DEBUG_COL1_OFS, y, telemetryStatsFrames, LEFT);
 #endif
 
-  lcdDrawText(4*FW, 7*FH+1, STR_MENUTORESET);
+  lcdDrawText(5*FW, 7*FH+1, STR_MENUTORESET);
   lcdInvertLastLine();
 }
 
-#if defined(STM32)
+#if defined(STM32) && !defined(PCBI6X)
 void menuStatisticsDebug2(event_t event)
 {
   TITLE(STR_MENUDEBUG);
 
   switch (event) {
     case EVT_KEY_FIRST(KEY_ENTER):
-      telemetryErrors  = 0;
+    //   telemetryErrors  = 0;
       break;
 
     case EVT_KEY_FIRST(KEY_UP):
@@ -305,12 +297,6 @@ void menuStatisticsDebug2(event_t event)
       chainMenu(menuMainView);
       break;
   }
-
-  lcdDrawTextAlignedLeft(MENU_DEBUG_ROW1, "Tlm RX Err");
-  lcdDrawNumber(MENU_DEBUG_COL1_OFS, MENU_DEBUG_ROW1, telemetryErrors, RIGHT);
-
-  lcdDrawTextAlignedLeft(MENU_DEBUG_ROW2, "BT status");
-  lcdDrawNumber(MENU_DEBUG_COL1_OFS, MENU_DEBUG_ROW2, btChipPresent, RIGHT);
 
   lcdDrawText(4*FW, 7*FH+1, STR_MENUTORESET);
   lcdInvertLastLine();

@@ -1,15 +1,16 @@
+cmake_minimum_required(VERSION 3.13)
 project(OpenTX)
 
 set(VERSION_MAJOR "2")
-set(VERSION_MINOR "2")
-set(VERSION_REVISION "2")
+set(VERSION_MINOR "4")
+set(VERSION_REVISION "a")
+string(TIMESTAMP BUILD_YEAR "%Y")
 set(VERSION_SUFFIX $ENV{OPENTX_VERSION_SUFFIX})
 set(VERSION_FAMILY ${VERSION_MAJOR}.${VERSION_MINOR})
 set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}${VERSION_SUFFIX})
-set(SDCARD_REVISION "0015")
+set(SDCARD_REVISION "0018")
 set(SDCARD_VERSION  ${VERSION_MAJOR}.${VERSION_MINOR}V${SDCARD_REVISION})
 
-cmake_minimum_required(VERSION 2.8)
 cmake_policy(SET CMP0020 NEW)
 cmake_policy(SET CMP0023 OLD)
 if(POLICY CMP0042)
@@ -38,12 +39,13 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
 
+string(TIMESTAMP DATE "%Y-%m-%d")
+string(TIMESTAMP TIME "%H:%M:%S")
+
 include(Macros)
-today(DATE)
-now(TIME)
 git_id(GIT_STR)
 
-message(STATUS "OpenTX ${VERSION} @${GIT_STR}")
+message(STATUS "OpenI6X ${VERSION} @${GIT_STR}")
 
 # options shared by all targets
 
@@ -63,18 +65,24 @@ if(WIN32)
 endif()
 
 # Python check
-find_package("PythonInterp")
-if(PYTHONINTERP_FOUND)
-  message(STATUS "Python found, version: ${PYTHON_VERSION_STRING}")
-  get_filename_component(PYTHON_DIRECTORY ${PYTHON_EXECUTABLE} DIRECTORY)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  cmake_path(GET Python3_EXECUTABLE PARENT_PATH PYTHON_BIN_DIR)
+
+  message(STATUS "Python executable: ${Python3_EXECUTABLE}")
+  message(STATUS "Python bin directory: ${PYTHON_BIN_DIR}")
 else()
   message(WARNING "Python not found! Most firmware and simu flavors not buildable.")
   set(LUA NO)
 endif()
 
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")  # regular Clang or AppleClang
+  set(CLANG TRUE)
+endif()
+
 option(DISABLE_COMPANION "Disable building companion and simulators" OFF)
 
-if(NOT DISABLE_COMPANION)
+if(NOT DISABLE_COMPANION)  # FIXME cosmetics/style
 find_package(Qt5Core)
 find_package(Qt5Widgets)
 find_package(Qt5Xml)
@@ -114,6 +122,9 @@ if(Qt5Core_FOUND)
   list(APPEND APP_COMMON_DEFINES -DQXT_STATIC)
   list(APPEND APP_COMMON_DEFINES -DQT_USE_QSTRINGBUILDER)  # more efficient QString construction using % operator
 
+  if(MSVC)
+    list(APPEND APP_COMMON_DEFINES -D__STDC_LIMIT_MACROS)
+  endif()
   if(APP_CUSTOM_DBG_HANDLER)
     # provide full qDebug log context to our custom handler. This may also affect libsimulator, which is why it is here
     list(APPEND APP_COMMON_DEFINES -DQT_MESSAGELOGCONTEXT)
@@ -153,7 +164,7 @@ if(Qt5Core_FOUND OR FOX_FOUND)
     message(STATUS "SDL not found! Simulator audio, and joystick inputs, will not work.")
   endif()
 endif()
-endif()
+endif(NOT DISABLE_COMPANION)
 
 # Check for a file that is typically left from a OpenTX 2.1 build and abort if found
 if (EXISTS ${RADIO_SRC_DIRECTORY}/stamp.h OR EXISTS ${RADIO_SRC_DIRECTORY}/translations/en.h)

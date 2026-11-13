@@ -18,12 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#if defined(QT_CORE_LIB) && 0    // experimental
-  #define SIMPGMSPC_USE_QT    1
-  #include <QElapsedTimer>
-#else
   #define SIMPGMSPC_USE_QT    0
-#endif
 
 #include "opentx.h"
 #include <errno.h>
@@ -35,7 +30,7 @@
   #include <sys/time.h>
 #endif
 
-#if defined(SIMU_AUDIO) && defined(CPUARM)
+#if defined(SIMU_AUDIO)
   #include <SDL.h>
 #endif
 
@@ -45,20 +40,27 @@ uint8_t portb, portc, porth=0, dummyport;
 uint16_t dummyport16;
 int g_snapshot_idx = 0;
 
-pthread_t main_thread_pid;
-uint8_t main_thread_running = 0;
+uint8_t simu_start_mode = 0;
 char * main_thread_error = NULL;
+
+bool simu_shutdown = false;
+bool simu_running = false;
 
 #if defined(STM32)
 uint32_t Peri1_frequency, Peri2_frequency;
+#if defined(STM32F0)
+// F0 peripherals are RAM at their real addresses (simu_f0_memory.cpp)
+extern "C" uint32_t simuPrimask = 0;  // see cmsis_simu.h
+#else
 GPIO_TypeDef gpioa, gpiob, gpioc, gpiod, gpioe, gpiof, gpiog, gpioh, gpioi, gpioj;
 TIM_TypeDef tim1, tim2, tim3, tim4, tim5, tim6, tim7, tim8, tim9, tim10;
 RCC_TypeDef rcc;
-DMA_Stream_TypeDef dma1_stream2, dma1_stream5, dma1_stream7, dma2_stream1, dma2_stream2, dma2_stream5, dma2_stream6, dma2_stream7;
+DMA_Stream_TypeDef dma1_stream1, dma1_stream2, dma1_stream3, dma1_stream4, dma1_stream5, dma1_stream6, dma1_stream7, dma2_stream1, dma2_stream2, dma2_stream5, dma2_stream6, dma2_stream7;
 DMA_TypeDef dma2;
 USART_TypeDef Usart0, Usart1, Usart2, Usart3, Usart4;
-SysTick_Type systick;
-#elif defined(CPUARM)
+#endif
+SysTick_Type systick = {};  // value-init: Cortex-M0 CMSIS declares CALIB const
+#else
 Pio Pioa, Piob, Pioc;
 Pmc pmc;
 Ssc ssc;
@@ -105,12 +107,12 @@ uint64_t simuTimerMicros(void)
   // read the timer
   QueryPerformanceCounter(&newTick);
   // compute the elapsed time
-  return U64((newTick.QuadPart - firstTick.QuadPart) * freqScale);
+  return (newTick.QuadPart - firstTick.QuadPart) * freqScale;
 
 #else  // GNUC
 
   auto now = std::chrono::steady_clock::now();
-  return (U64) std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+  return (uint64_t) std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
 
 #endif
 }
@@ -125,16 +127,17 @@ uint16_t getTmr2MHz()
   return simuTimerMicros() * 2;
 }
 
-// return 2ms resolution to match CoOS settings
-U64 CoGetOSTime(void)
-{
-  return simuTimerMicros() / 2000;
-}
-
 void simuInit()
 {
 #if defined(STM32)
   RCC->CSR = 0;
+#endif
+
+  // set power button to "not pressed"
+#if defined(PWR_SWITCH_GPIO)  // STM32
+  GPIO_SetBits(PWR_SWITCH_GPIO, PWR_SWITCH_GPIO_PIN);
+#elif defined(PIO_PC17)       // AT91SAM3
+  PIOC->PIO_PDSR &= ~PIO_PC17;
 #endif
 
   for (int i = 0; i <= 17; i++) {
@@ -145,7 +148,7 @@ void simuInit()
     simuSetTrim(i, false);
 
 #if defined(ROTARY_ENCODERS) || defined(ROTARY_ENCODER_NAVIGATION)
-  for (uint8_t i=0; i < DIM(rotencValue); i++)
+  for (uint32_t i=0; i < DIM(rotencValue); i++)
     rotencValue[i] = 0;
 #endif
 }
@@ -159,7 +162,6 @@ void simuInit()
       if ((int)state > 0) pin |= (mask); else pin &= ~(mask); \
       break;
 
-#if defined(CPUARM)
   #if defined(PCBHORUS) || (defined(PCBTARANIS) && !defined(PCBX9E))
     #define SWITCH_CASE    NEG_CASE
     #define SWITCH_INV     POS_CASE
@@ -173,31 +175,17 @@ void simuInit()
       if ((int)state > 0) pin2 &= ~(mask2); else pin2 |= (mask2); \
       break;
   #define SWITCH_3_INV(swtch, pin1, pin2, mask1, mask2)  SWITCH_3_CASE(swtch, pin2, pin1, mask2, mask1)
-#else  // AVR
-  #if defined(PCBMEGA2560)
-    #define SWITCH_CASE    POS_CASE
-  #else
-    #define SWITCH_CASE    NEG_CASE
-  #endif
-  #define KEY_CASE         POS_CASE
-  #define SWITCH_3_CASE(swtch, pin1, pin2, mask1, mask2) \
-    case swtch: \
-      if ((int)state >= 0) pin1 &= ~(mask1); else pin1 |= (mask1); \
-      if ((int)state <= 0) pin2 &= ~(mask2); else pin2 |= (mask2); \
-      break;
-#endif
 
 #define TRIM_CASE          KEY_CASE
 
+// PCBI6X scans a key matrix and reads SA-SD through the ADC: its simuSetKey/Trim/Switch
+// live in targets/flysky/keys_driver.cpp next to the hardware reads they replace.
+#if !defined(PCBI6X)
 void simuSetKey(uint8_t key, bool state)
 {
   // if (state) TRACE_SIMPGMSPACE("simuSetKey(%d, %d)", key, state);
 
   switch (key) {
-#if !defined(PCBHORUS)
-    KEY_CASE(KEY_MENU, KEYS_GPIO_REG_MENU, KEYS_GPIO_PIN_MENU)
-    KEY_CASE(KEY_EXIT, KEYS_GPIO_REG_EXIT, KEYS_GPIO_PIN_EXIT)
-#endif
 #if defined(PCBX12S)
     KEY_CASE(KEY_PGUP, KEYS_GPIO_REG_PGUP, KEYS_GPIO_PIN_PGUP)
     KEY_CASE(KEY_PGDN, KEYS_GPIO_REG_PGDN, KEYS_GPIO_PIN_PGDN)
@@ -214,12 +202,16 @@ void simuSetKey(uint8_t key, bool state)
     KEY_CASE(KEY_MODEL, KEYS_GPIO_REG_UP, KEYS_GPIO_PIN_UP)
     KEY_CASE(KEY_EXIT, KEYS_GPIO_REG_DOWN, KEYS_GPIO_PIN_DOWN)
 #elif defined(PCBXLITE)
+    KEY_CASE(KEY_SHIFT, KEYS_GPIO_REG_SHIFT, KEYS_GPIO_PIN_SHIFT)
+    KEY_CASE(KEY_EXIT, KEYS_GPIO_REG_EXIT, KEYS_GPIO_PIN_EXIT)
     KEY_CASE(KEY_ENTER, KEYS_GPIO_REG_ENTER, KEYS_GPIO_PIN_ENTER)
     KEY_CASE(KEY_RIGHT, KEYS_GPIO_REG_RIGHT, KEYS_GPIO_PIN_RIGHT)
     KEY_CASE(KEY_LEFT, KEYS_GPIO_REG_LEFT, KEYS_GPIO_PIN_LEFT)
     KEY_CASE(KEY_UP, KEYS_GPIO_REG_UP, KEYS_GPIO_PIN_UP)
     KEY_CASE(KEY_DOWN, KEYS_GPIO_REG_DOWN, KEYS_GPIO_PIN_DOWN)
 #elif defined(PCBTARANIS)
+    KEY_CASE(KEY_MENU, KEYS_GPIO_REG_MENU, KEYS_GPIO_PIN_MENU)
+    KEY_CASE(KEY_EXIT, KEYS_GPIO_REG_EXIT, KEYS_GPIO_PIN_EXIT)
     KEY_CASE(KEY_ENTER, KEYS_GPIO_REG_ENTER, KEYS_GPIO_PIN_ENTER)
     KEY_CASE(KEY_PAGE, KEYS_GPIO_REG_PAGE, KEYS_GPIO_PIN_PAGE)
   #if defined(KEYS_GPIO_REG_MINUS)
@@ -227,17 +219,12 @@ void simuSetKey(uint8_t key, bool state)
     KEY_CASE(KEY_PLUS, KEYS_GPIO_REG_PLUS, KEYS_GPIO_PIN_PLUS)
   #endif
 #else
+    KEY_CASE(KEY_MENU, KEYS_GPIO_REG_MENU, KEYS_GPIO_PIN_MENU)
+    KEY_CASE(KEY_EXIT, KEYS_GPIO_REG_EXIT, KEYS_GPIO_PIN_EXIT)
     KEY_CASE(KEY_RIGHT, KEYS_GPIO_REG_RIGHT, KEYS_GPIO_PIN_RIGHT)
     KEY_CASE(KEY_LEFT, KEYS_GPIO_REG_LEFT, KEYS_GPIO_PIN_LEFT)
     KEY_CASE(KEY_UP, KEYS_GPIO_REG_UP, KEYS_GPIO_PIN_UP)
     KEY_CASE(KEY_DOWN, KEYS_GPIO_REG_DOWN, KEYS_GPIO_PIN_DOWN)
-#endif
-#if defined(PCBSKY9X) && !defined(REVX) && !defined(AR9X) && defined(ROTARY_ENCODERS)
-    KEY_CASE(BTN_REa, PIOB->PIO_PDSR, 0x40)
-#elif (defined(PCBGRUVIN9X) || defined(PCBMEGA2560)) && (defined(ROTARY_ENCODERS) || defined(ROTARY_ENCODER_NAVIGATION))
-    KEY_CASE(BTN_REa, pind, 0x20)
-#elif defined(PCB9X) && defined(ROTARY_ENCODER_NAVIGATION)
-    KEY_CASE(BTN_REa, RotEncoder, 0x20)
 #endif
   }
 }
@@ -319,59 +306,24 @@ void simuSetSwitch(uint8_t swtch, int8_t state)
   #endif
     SWITCH_3_CASE(6,  SWITCHES_GPIO_REG_G_L, SWITCHES_GPIO_REG_G_H, SWITCHES_GPIO_PIN_G_L, SWITCHES_GPIO_PIN_G_H)
     SWITCH_CASE  (7,  SWITCHES_GPIO_REG_H, SWITCHES_GPIO_PIN_H)
-#elif defined(PCBSKY9X)
-    SWITCH_3_CASE(0, PIOC->PIO_PDSR, PIOC->PIO_PDSR, 0x00004000, 0x00000800)
-    SWITCH_CASE(1, PIOC->PIO_PDSR, 1<<20)
-    SWITCH_CASE(2, PIOA->PIO_PDSR, 1<<15)
-    SWITCH_CASE(3, PIOC->PIO_PDSR, 1<<31)
-    SWITCH_CASE(4, PIOA->PIO_PDSR, 1<<2)
-    SWITCH_CASE(5, PIOC->PIO_PDSR, 1<<16)
-    SWITCH_CASE(6, PIOC->PIO_PDSR, 1<<8)
-#elif defined(PCBGRUVIN9X)
-    SWITCH_3_CASE(0, ping, pinb, (1<<INP_G_ID1), (1<<INP_B_ID2))
-    SWITCH_CASE(1, ping, 1<<INP_G_ThrCt)
-    SWITCH_CASE(2, ping, 1<<INP_G_RuddDR)
-    SWITCH_CASE(3, pinc, 1<<INP_C_ElevDR)
-    SWITCH_CASE(4, pinc, 1<<INP_C_AileDR)
-    SWITCH_CASE(5, ping, 1<<INP_G_Gear)
-    SWITCH_CASE(6, pinb, 1<<INP_B_Trainer)
-#elif defined(PCBMEGA2560)
-    SWITCH_3_CASE(0, pinc, pinc, (1<<INP_C_ID1), (1<<INP_C_ID2))
-    SWITCH_CASE(1, ping, 1<<INP_G_ThrCt)
-    SWITCH_CASE(2, ping, 1<<INP_G_RuddDR)
-    SWITCH_CASE(3, pinc, 1<<INP_L_ElevDR)
-    SWITCH_CASE(4, pinc, 1<<INP_C_AileDR)
-    SWITCH_CASE(5, ping, 1<<INP_G_Gear)
-    SWITCH_CASE(6, pinb, 1<<INP_L_Trainer)
-#else // PCB9X
-    SWITCH_3_CASE(0, ping, pine, (1<<INP_G_ID1), (1<<INP_E_ID2))
-  #if defined(TELEMETRY_JETI) || defined(TELEMETRY_FRSKY) || defined(TELEMETRY_NMEA) || defined(TELEMETRY_ARDUPILOT) || defined(TELEMETRY_MAVLINK)
-    SWITCH_CASE(1, pinc, 1<<INP_C_ThrCt)
-    SWITCH_CASE(4, pinc, 1<<INP_C_AileDR)
-  #else
-    SWITCH_CASE(1, pine, 1<<INP_E_ThrCt)
-    SWITCH_CASE(4, pine, 1<<INP_E_AileDR)
-  #endif
-    SWITCH_CASE(2, ping, 1<<INP_G_RuddDR)
-    SWITCH_CASE(3, pine, 1<<INP_E_ElevDR)
-    SWITCH_CASE(5, pine, 1<<INP_E_Gear)
-    SWITCH_CASE(6, pine, 1<<INP_E_Trainer)
 #endif
 
     default:
       break;
   }
 }
+#endif // !defined(PCBI6X)
 
 void StartSimu(bool tests, const char * sdPath, const char * settingsPath)
 {
-  if (main_thread_running)
+  if (simu_running)
     return;
 
-  s_current_protocol[0] = 255;
+  moduleState[0].protocol = PROTOCOL_CHANNELS_UNINITIALIZED;
   menuLevel = 0;
 
-  main_thread_running = (tests ? 1 : 2); // TODO rename to simu_run_mode with #define
+  simu_start_mode = (tests ? 0 : 0x02 /* OPENTX_START_NO_CHECKS */);
+  simu_shutdown = false;
 
   simuFatfsSetPaths(sdPath, settingsPath);
 
@@ -400,7 +352,9 @@ void StartSimu(bool tests, const char * sdPath, const char * settingsPath)
   try {
 #endif
 
-  pthread_create(&main_thread_pid, NULL, &simuMain, NULL);
+  simuMain();
+
+  simu_running = true;
 
 #if defined(SIMU_EXCEPTIONS)
   }
@@ -411,19 +365,19 @@ void StartSimu(bool tests, const char * sdPath, const char * settingsPath)
 
 void StopSimu()
 {
-  if (!main_thread_running)
+  if (!simu_running)
     return;
 
-  main_thread_running = 0;
+  simu_shutdown = true;
 
-#if defined(CPUARM)
-  pthread_join(mixerTaskId, NULL);
-  pthread_join(menusTaskId, NULL);
-#endif
-  pthread_join(main_thread_pid, NULL);
+  pthread_join(mixerTaskId._thread, nullptr);
+  pthread_join(menusTaskId._thread, nullptr);
+  pthread_join(timerTaskId._thread, nullptr);
+
+  simu_running = false;
 }
 
-#if defined(CPUARM)
+#if defined(AUDIO)  // buzzer-only targets (PCBI6X) have no audio buffer or volume control
 struct SimulatorAudio {
   int volumeGain;
   int currentVolume;
@@ -434,11 +388,26 @@ struct SimulatorAudio {
 } simuAudio;
 #endif
 
+bool simuIsRunning()
+{
+  return simu_running;
+}
+
+uint8_t simuSleep(uint32_t ms)
+{
+  for (uint32_t i = 0; i < ms; ++i){
+    if (simu_shutdown || !simu_running)
+      return 1;
+    sleep(1);
+  }
+  return 0;
+}
+
+#if defined(AUDIO)
 void audioConsumeCurrentBuffer()
 {
 }
 
-#if defined(MASTER_VOLUME)
 void setScaledVolume(uint8_t volume)
 {
   simuAudio.currentVolume = 127 * volume * simuAudio.volumeGain / VOLUME_LEVEL_MAX / 10;
@@ -453,9 +422,9 @@ int32_t getVolume()
 {
   return 0;
 }
-#endif
+#endif // defined(AUDIO)
 
-#if defined(SIMU_AUDIO) && defined(CPUARM)
+#if defined(SIMU_AUDIO)
 void copyBuffer(uint8_t * dest, const uint16_t * buff, unsigned int samples)
 {
   for(unsigned int i=0; i<samples; i++) {
@@ -534,7 +503,7 @@ void * audioThread(void *)
   wanted.channels = 1;    /* 1 = mono, 2 = stereo */
   wanted.samples = AUDIO_BUFFER_SIZE*2;  /* Good low-latency value for callback */
   wanted.callback = fillAudioBuffer;
-  wanted.userdata = NULL;
+  wanted.userdata = nullptr;
 
   /*
     SDL_OpenAudio() internally calls SDL_InitSubSystem(SDL_INIT_AUDIO),
@@ -574,14 +543,9 @@ void StartAudioThread(int volumeGain)
 void StopAudioThread()
 {
   simuAudio.threadRunning = false;
-  pthread_join(simuAudio.threadPid, NULL);
+  pthread_join(simuAudio.threadPid, nullptr);
 }
-#endif // #if defined(SIMU_AUDIO) && defined(CPUARM)
-
-uint16_t stackAvailable()
-{
-  return 500;
-}
+#endif // #if defined(SIMU_AUDIO)
 
 bool simuLcdRefresh = true;
 display_t simuLcdBuf[DISPLAY_BUFFER_SIZE];
@@ -606,8 +570,8 @@ void lcdRefresh()
 {
   static bool lightEnabled = (bool)isBacklightEnabled();
 
-  if (bool(isBacklightEnabled()) != lightEnabled || memcmp(simuLcdBuf, displayBuf, DISPLAY_BUFFER_SIZE)) {
-    memcpy(simuLcdBuf, displayBuf, DISPLAY_BUFFER_SIZE);
+  if (bool(isBacklightEnabled()) != lightEnabled || memcmp(simuLcdBuf, displayBuf, DISPLAY_BUFFER_SIZE * sizeof(display_t))) {
+    memcpy(simuLcdBuf, displayBuf, DISPLAY_BUFFER_SIZE * sizeof(display_t));
     lightEnabled = (bool)isBacklightEnabled();
     simuLcdRefresh = true;
   }
@@ -633,26 +597,34 @@ int lcdRestoreBackupBuffer()
   return 1;
 }
 
+uint32_t pwrCheck()
+{
+  // TODO: ability to simulate shutdown warning for a "soft" simulator restart
+  return simu_shutdown ? e_power_off : e_power_on;
+}
 
-#if defined(CPUARM)
 void pwrOff()
 {
 }
-uint32_t pwrPressed()
+
+bool pwrPressed()
 {
-#if defined(PWR_BUTTON_PRESS)
-  return false;
+  // TODO: simulate power button
+#if defined(PWR_SWITCH_GPIO)  // STM32
+  return GPIO_ReadInputDataBit(PWR_SWITCH_GPIO, PWR_SWITCH_GPIO_PIN) == Bit_RESET;
+#elif defined(PIO_PC17)       // AT91SAM3
+  return PIOC->PIO_PDSR & PIO_PC17;
 #else
-  return true;
+  return false;
 #endif
 }
-#endif
 
 #if defined(STM32)
 void pwrInit() { }
 int usbPlugged() { return false; }
 int getSelectedUsbMode() { return USB_JOYSTICK_MODE; }
 void setSelectedUsbMode(int mode) {}
+#if !defined(STM32F0)  // F2/F4 Standard Peripheral Library stubs; STM32F0 targets use LL drivers
 void USART_DeInit(USART_TypeDef* ) { }
 ErrorStatus RTC_SetTime(uint32_t RTC_Format, RTC_TimeTypeDef* RTC_TimeStruct) { return SUCCESS; }
 ErrorStatus RTC_SetDate(uint32_t RTC_Format, RTC_DateTypeDef* RTC_DateStruct) { return SUCCESS; }
@@ -709,11 +681,32 @@ void RCC_LSEConfig(uint8_t RCC_LSE) { }
 void RCC_GetClocksFreq(RCC_ClocksTypeDef* RCC_Clocks) { };
 FlagStatus RCC_GetFlagStatus(uint8_t RCC_FLAG) { return SET; }
 ErrorStatus RTC_WaitForSynchro(void) { return SUCCESS; }
+#endif // !defined(STM32F0)
 void unlockFlash() { }
 void lockFlash() { }
-void flashWrite(uint32_t *address, uint32_t *buffer) { SIMU_SLEEP(100); }
+void flashWrite(uint32_t *address, uint32_t *buffer) { simuSleep(100); }
 uint32_t isBootloaderStart(const uint8_t * block) { return 1; }
-#endif // defined(PCBTARANIS)
+#endif // defined(STM32)
+
+#if defined(STM32F0)
+// Firmware-only symbols still referenced by F0 drivers and shared code. The firmware drops
+// the unused ones with --gc-sections; a simulator library has to resolve every one.
+ErrorStatus LL_GPIO_Init(GPIO_TypeDef *, LL_GPIO_InitTypeDef *) { return SUCCESS; }
+uint32_t LL_DMA_DeInit(DMA_TypeDef *, uint32_t) { return SUCCESS; }
+ErrorStatus LL_USART_Init(USART_TypeDef *, const LL_USART_InitTypeDef *) { return SUCCESS; }
+ErrorStatus LL_USART_DeInit(const USART_TypeDef *) { return SUCCESS; }
+ErrorStatus LL_RCC_DeInit(void) { return SUCCESS; }
+ErrorStatus LL_I2C_Init(I2C_TypeDef *, const LL_I2C_InitTypeDef *) { return SUCCESS; }
+ErrorStatus LL_ADC_Init(ADC_TypeDef *, LL_ADC_InitTypeDef *) { return SUCCESS; }
+ErrorStatus LL_ADC_REG_Init(ADC_TypeDef *, LL_ADC_REG_InitTypeDef *) { return SUCCESS; }
+void delay_ms(uint32_t ms) { }
+void usbSerialPutc(uint8_t c) { }
+void rtcSetTime(const struct gtm * t) { }
+#endif
+
+#if defined(BUZZER) && !defined(DFPLAYER)
+void pushPrompt(uint16_t prompt) { }  // voice prompts need the DFPlayer mod
+#endif
 
 #if defined(PCBHORUS)
 void LCD_ControlLight(uint16_t dutyCycle) { }
@@ -722,18 +715,3 @@ void LCD_ControlLight(uint16_t dutyCycle) { }
 void serialPrintf(const char * format, ...) { }
 void serialCrlf() { }
 void serialPutc(char c) { }
-uint16_t stackSize() { return 0; }
-
-void * start_routine(void * attr)
-{
-  FUNCPtr task = (FUNCPtr)attr;
-  task(NULL);
-  return NULL;
-}
-
-OS_TID CoCreateTask(FUNCPtr task, void *argv, uint32_t parameter, void * stk, uint32_t stksize)
-{
-  pthread_t tid;
-  pthread_create(&tid, NULL, start_routine, (void *)task);
-  return tid;
-}

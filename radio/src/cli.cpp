@@ -19,19 +19,28 @@
  */
 
 #include "opentx.h"
+#include "thirdparty/mini_print/mini_vsnprintf.h"
+#if defined(SDCARD)
 #include "diskio.h"
-#include <ctype.h>
 #include <malloc.h>
-#include <new>
+#endif
+#include <ctype.h>
+// #include <new>
 
 #define CLI_COMMAND_MAX_ARGS           8
-#define CLI_COMMAND_MAX_LEN            256
+#define CLI_COMMAND_MAX_LEN            32
 
-OS_TID cliTaskId;
-TaskStack<CLI_STACK_SIZE> _ALIGNED(8) cliStack; // stack must be aligned to 8 bytes otherwise printf for %f does not work!
-Fifo<uint8_t, 256> cliRxFifo;
+// task_handle_t cliTaskId;
+// TASK_DEFINE_STACK(cliStack, CLI_STACK_SIZE);
+
+Fifo<uint8_t, 32> cliRxFifo;
 uint8_t cliTracesEnabled = true;
 char cliLastLine[CLI_COMMAND_MAX_LEN+1];
+
+// Non-blocking "repeat" state, serviced by handleCli() from perMain context.
+static tmr10ms_t repeatNext = 0;
+static uint32_t repeatInterval = 0;   // in 10ms ticks
+static char repeatCmd[16];
 
 typedef int (* CliFunction) (const char ** args);
 int cliExecLine(char * line);
@@ -62,22 +71,12 @@ int toLongLongInt(const char ** argv, int index, long long int * val)
   if (*argv[index] == '\0') {
     return 0;
   }
-  else {
-    int base = 10;
-    const char * s = argv[index];
-    if (strlen(s) > 2 && s[0] == '0' && s[1] == 'x') {
-      base = 16;
-      s = &argv[index][2];
-    }
-    char * endptr = NULL;
-    *val = strtoll(s, &endptr, base);
-    if (*endptr == '\0')
-      return 1;
-    else {
-      serialPrint("%s: Invalid argument \"%s\"", argv[0], argv[index]);
-      return -1;
-    }
-  }
+  char * endptr = nullptr;
+  *val = mini_strtoll(argv[index], &endptr, 0);
+  if (*endptr == '\0')
+    return 1;
+  serialPrint("%s: Invalid argument \"%s\"", argv[0], argv[index]);
+  return -1;
 }
 
 int toInt(const char ** argv, int index, int * val)
@@ -93,17 +92,19 @@ int cliBeep(const char ** argv)
   int freq = BEEP_DEFAULT_FREQ;
   int duration = 100;
   if (toInt(argv, 1, &freq) >= 0 && toInt(argv, 2, &duration) >= 0) {
-    audioQueue.playTone(freq, duration, 20, PLAY_NOW);
+    playTone(freq, duration, 20, PLAY_NOW);
   }
   return 0;
 }
-
+#if defined(AUDIO)
 int cliPlay(const char ** argv)
 {
   audioQueue.playFile(argv[1], PLAY_NOW);
   return 0;
 }
+#endif
 
+#if defined(SDCARD)
 int cliLs(const char ** argv)
 {
   FILINFO fno;
@@ -303,12 +304,14 @@ int cliTestSD(const char ** argv)
 
   return 0;
 }
+#endif
 
+#if !defined(STM32F0)
 int cliTestNew()
 {
   char * tmp = 0;
   serialPrint("Allocating 1kB with new()");
-  CoTickDelay(100);
+  sleep_ms(200);
   tmp = new char[1024];
   if (tmp) {
     serialPrint("\tsuccess");
@@ -320,7 +323,7 @@ int cliTestNew()
   }
 
   serialPrint("Allocating 10MB with (std::nothrow) new()");
-  CoTickDelay(100);
+  sleep_ms(200);
   tmp = new (std::nothrow) char[1024*1024*10];
   if (tmp) {
     serialPrint("\tFAILURE, tmp = %p", tmp);
@@ -332,7 +335,7 @@ int cliTestNew()
   }
 
   serialPrint("Allocating 10MB with new()");
-  CoTickDelay(100);
+  sleep_ms(200);
   tmp = new char[1024*1024*10];
   if (tmp) {
     serialPrint("\tFAILURE, tmp = %p", tmp);
@@ -345,297 +348,9 @@ int cliTestNew()
   serialPrint("Test finished");
   return 0;
 }
+#endif
 
-#if defined(COLORLCD)
-
-extern bool perMainEnabled;
-typedef void (*graphichTestFunc)(void);
-
-void testDrawSolidFilledRectangle()
-{
-  lcdDrawFilledRect(0, 0, LCD_W, LCD_H, SOLID, TEXT_BGCOLOR);
-}
-
-void testDrawFilledRectangle()
-{
-  lcdDrawFilledRect(0, 0, LCD_W, LCD_H, DOTTED, TEXT_BGCOLOR);
-}
-
-void testDrawSolidFilledRoundedRectangle()
-{
-  lcdDrawFilledRect(0, 0, LCD_W/2, LCD_H/2, SOLID, ROUND|TEXT_BGCOLOR);
-}
-
-void testDrawBlackOverlay()
-{
-  lcdDrawBlackOverlay();
-}
-
-void testDrawSolidHorizontalLine1()
-{
-  lcdDrawSolidHorizontalLine(0, 0, 1, 0);
-}
-
-void testDrawSolidHorizontalLine2()
-{
-  lcdDrawSolidHorizontalLine(0, 0, LCD_W, 0);
-}
-
-void testDrawSolidVerticalLine1()
-{
-  lcdDrawSolidVerticalLine(0, 0, 1, 0);
-}
-
-void testDrawSolidVerticalLine2()
-{
-  lcdDrawSolidVerticalLine(0, 0, LCD_H, 0);
-}
-
-void testDrawDiagonalLine()
-{
-  lcdDrawLine(0,0, LCD_W, LCD_H, SOLID, TEXT_COLOR);
-}
-
-void testEmpty()
-{
-}
-
-void testDrawRect()
-{
-  lcdDrawRect(0, 0, LCD_W, LCD_H, 2, SOLID, TEXT_COLOR);
-}
-
-void testDrawText()
-{
-  lcdDrawText(0, LCD_H/2, "The quick brown fox jumps over the lazy dog", TEXT_COLOR);
-}
-
-void testDrawTextVertical()
-{
-  lcdDrawText(30, LCD_H, "The quick brown fox ", TEXT_COLOR|VERTICAL|NO_FONTCACHE);
-}
-
-void testClear()
-{
-  lcdClear();
-}
-
-#define GRAPHICS_TEST_RUN_STEP    100
-#define RUN_GRAPHICS_TEST(name, runtime)   runGraphicsTest(name, #name, runtime)
-
-float runGraphicsTest(graphichTestFunc func, const char * name, uint32_t runtime)
-{
-  uint32_t start = (uint32_t)CoGetOSTime();
-  uint32_t noRuns = 0;
-  while (((uint32_t)CoGetOSTime() - start) < runtime/2 ) {
-    for (int n=0; n<GRAPHICS_TEST_RUN_STEP; n++) {
-      func();
-    }
-    lcdRefresh();
-    noRuns += GRAPHICS_TEST_RUN_STEP;
-  }
-  uint32_t actualRuntime = (uint32_t)CoGetOSTime() - start;
-  float result = (noRuns * 500.0f) / (float)actualRuntime;     // runs/second
-  serialPrint("Test %s speed: %0.2f, (%d runs in %d ms)", name, result, noRuns, actualRuntime*2);
-  CoTickDelay(100);
-  return result;
-}
-
-int cliTestGraphics()
-{
-  serialPrint("Starting graphics performance test...");
-  CoTickDelay(100);
-
-  watchdogSuspend(6000/*60s*/);
-  if (pulsesStarted()) {
-    pausePulses();
-  }
-  pauseMixerCalculations();
-  perMainEnabled = false;
-
-  float result = 0;
-  RUN_GRAPHICS_TEST(testEmpty, 1000);
-  // result += RUN_GRAPHICS_TEST(testDrawSolidHorizontalLine1, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawSolidHorizontalLine2, 1000);
-  // result += RUN_GRAPHICS_TEST(testDrawSolidVerticalLine1, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawSolidVerticalLine2, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawDiagonalLine, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawSolidFilledRectangle, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawSolidFilledRoundedRectangle, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawRect, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawFilledRectangle, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawBlackOverlay, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawText, 1000);
-  result += RUN_GRAPHICS_TEST(testDrawTextVertical, 1000);
-  result += RUN_GRAPHICS_TEST(testClear, 1000);
-
-  serialPrint("Total speed: %0.2f", result);
-
-  perMainEnabled = true;
-  if (pulsesStarted()) {
-    resumePulses();
-  }
-  resumeMixerCalculations();
-  watchdogSuspend(0);
-
-  return 0;
-}
-
-void memoryRead(const uint8_t * src, uint32_t size)
-{
-  // uint8_t data;
-  while(size--) {
-    /*data =*/ *(const uint8_t volatile *)src;
-    ++src;
-  }
-
-}
-
-void memoryRead(const uint32_t * src, uint32_t size)
-{
-  while(size--) {
-    *(const uint32_t volatile *)src;
-    ++src;
-  }
-}
-
-uint32_t * testbuff[100];
-
-void memoryCopy(uint8_t * dest, const uint8_t * src, uint32_t size)
-{
-  while(size--) {
-    *dest = *src;
-    ++src;
-    ++dest;
-  }
-}
-
-void memoryCopy(uint32_t * dest, const uint32_t * src, uint32_t size)
-{
-  while(size--) {
-    *dest = *src;
-    ++src;
-    ++dest;
-  }
-}
-
-#define MEMORY_SPEED_BLOCK_SIZE     (4*1024)
-
-void testMemoryReadFrom_RAM_8bit()
-{
-  memoryRead((const uint8_t *)cliLastLine, MEMORY_SPEED_BLOCK_SIZE);
-}
-
-void testMemoryReadFrom_RAM_32bit()
-{
-  memoryRead((const uint32_t *)0x20000000, MEMORY_SPEED_BLOCK_SIZE/4);
-}
-
-void testMemoryReadFrom_SDRAM_8bit()
-{
-  memoryRead((const uint8_t *)0xD0000000, MEMORY_SPEED_BLOCK_SIZE);
-}
-
-void testMemoryReadFrom_SDRAM_32bit()
-{
-  memoryRead((const uint32_t *)0xD0000000, MEMORY_SPEED_BLOCK_SIZE/4);
-}
-
-extern uint8_t * LCD_FIRST_FRAME_BUFFER;
-extern uint8_t  * LCD_SECOND_FRAME_BUFFER;
-
-
-void testMemoryCopyFrom_RAM_to_SDRAM_32bit()
-{
-  memoryCopy((uint32_t *)LCD_FIRST_FRAME_BUFFER, (const uint32_t * )cliLastLine, MEMORY_SPEED_BLOCK_SIZE/4);
-}
-
-void testMemoryCopyFrom_RAM_to_SDRAM_8bit()
-{
-  memoryCopy((uint8_t *)LCD_FIRST_FRAME_BUFFER, (const uint8_t * )cliLastLine, MEMORY_SPEED_BLOCK_SIZE);
-}
-
-void testMemoryCopyFrom_SDRAM_to_SDRAM_32bit()
-{
-  memoryCopy((uint32_t *)LCD_FIRST_FRAME_BUFFER, (const uint32_t * )LCD_SECOND_FRAME_BUFFER, MEMORY_SPEED_BLOCK_SIZE/4);
-}
-
-void testMemoryCopyFrom_SDRAM_to_SDRAM_8bit()
-{
-  memoryCopy((uint8_t *)LCD_FIRST_FRAME_BUFFER, (const uint8_t * )LCD_SECOND_FRAME_BUFFER, MEMORY_SPEED_BLOCK_SIZE);
-}
-
-#define MEMORY_TEST_RUN_STEP    100
-#define RUN_MEMORY_TEST(name, runtime)   runMemoryTest(name, #name, runtime)
-
-float runMemoryTest(graphichTestFunc func, const char * name, uint32_t runtime)
-{
-  uint32_t start = (uint32_t)CoGetOSTime();
-  uint32_t noRuns = 0;
-  while (((uint32_t)CoGetOSTime() - start) < runtime/2 ) {
-    for (int n=0; n<MEMORY_TEST_RUN_STEP; n++) {
-      func();
-    }
-    noRuns += MEMORY_TEST_RUN_STEP;
-  }
-  uint32_t actualRuntime = (uint32_t)CoGetOSTime() - start;
-  float result = (noRuns * 500.0f) / (float)actualRuntime;     // runs/second
-  serialPrint("Test %s speed: %0.2f, (%d runs in %d ms)", name, result, noRuns, actualRuntime*2);
-  CoTickDelay(100);
-  return result;
-}
-
-
-int cliTestMemorySpeed()
-{
-  serialPrint("Starting memory speed test...");
-  CoTickDelay(100);
-
-  watchdogSuspend(6000/*60s*/);
-  if (pulsesStarted()) {
-    pausePulses();
-  }
-  pauseMixerCalculations();
-  perMainEnabled = false;
-
-  float result = 0;
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_RAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_RAM_32bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_SDRAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_SDRAM_32bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_RAM_to_SDRAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_RAM_to_SDRAM_32bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_SDRAM_to_SDRAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_SDRAM_to_SDRAM_32bit, 200);
-
-  LTDC_Cmd(DISABLE);
-  serialPrint("Disabling LCD...");
-  CoTickDelay(100);
-
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_RAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_RAM_32bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_SDRAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryReadFrom_SDRAM_32bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_RAM_to_SDRAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_RAM_to_SDRAM_32bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_SDRAM_to_SDRAM_8bit, 200);
-  result += RUN_GRAPHICS_TEST(testMemoryCopyFrom_SDRAM_to_SDRAM_32bit, 200);
-
-  serialPrint("Total speed: %0.2f", result);
-
-  LTDC_Cmd(ENABLE);
-
-  perMainEnabled = true;
-  if (pulsesStarted()) {
-    resumePulses();
-  }
-  resumeMixerCalculations();
-  watchdogSuspend(0);
-
-  return 0;
-}
-#endif   // #if defined(COLORLCD)
-
+#if !defined(STM32F0)
 int cliTest(const char ** argv)
 {
   if (!strcmp(argv[1], "new")) {
@@ -644,20 +359,14 @@ int cliTest(const char ** argv)
   else if (!strcmp(argv[1], "std::exception")) {
     serialPrint("Not implemented");
   }
-#if defined(COLORLCD)
-  else if (!strcmp(argv[1], "graphics")) {
-    return cliTestGraphics();
-  }
-  else if (!strcmp(argv[1], "memspd")) {
-    return cliTestMemorySpeed();
-  }
-#endif
   else {
     serialPrint("%s: Invalid argument \"%s\"", argv[0], argv[1]);
   }
   return 0;
 }
+#endif
 
+#if defined(DEBUG)
 int cliTrace(const char ** argv)
 {
   if (!strcmp(argv[1], "on")) {
@@ -671,17 +380,25 @@ int cliTrace(const char ** argv)
   }
   return 0;
 }
+#endif
 
 int cliStackInfo(const char ** argv)
 {
-  serialPrint("[MAIN] %d available / %d", stackAvailable(), stackSize() * 4);  // stackSize() returns size in 32bit chunks
-  serialPrint("[MENUS] %d available / %d", menusStack.available(), menusStack.size());
-  serialPrint("[MIXER] %d available / %d", mixerStack.available(), mixerStack.size());
-  serialPrint("[AUDIO] %d available / %d", audioStack.available(), audioStack.size());
-  serialPrint("[CLI] %d available / %d", cliStack.available(), cliStack.size());
+#if !defined(STM32F0)
+  serialPrint("[MAIN] %d available / %d b", stackAvailable(), stackSize());  // stackSize() returns size in 32bit chunks
+#endif
+  serialPrint("[MENUS] %d / %d bytes", task_get_stack_usage(&menusTaskId), task_get_stack_size(&menusTaskId));
+  serialPrint("[MIXER] %d / %d bytes", task_get_stack_usage(&mixerTaskId), task_get_stack_size(&mixerTaskId));
+  serialPrint("[TIMER] %d / %d bytes", task_get_stack_usage(&timerTaskId), task_get_stack_size(&timerTaskId));
+#if defined(AUDIO)
+  serialPrint("[AUDIO] %d / %d bytes", task_get_stack_usage(&audioTaskId), task_get_stack_size(&audioTaskId));
+#endif
+  // CLI is moved to menu stack, so no separate task is used anymore
+  // serialPrint("[CLI] %d / %d bytes", task_get_stack_usage(&cliTaskId), task_get_stack_size(&cliTaskId));
   return 0;
 }
 
+#if !defined(STM32F0)
 extern int _end;
 extern int _heap_end;
 extern unsigned char *heap;
@@ -719,17 +436,10 @@ int cliMemoryInfo(const char ** argv)
   serialPrint("\nLua:");
   uint32_t s = luaGetMemUsed(lsScripts);
   serialPrint("\tScripts %u", s);
-#if defined(COLORLCD)
-  uint32_t w = luaGetMemUsed(lsWidgets);
-  uint32_t e = luaExtraMemoryUsage;
-  serialPrint("\tWidgets %u", w);
-  serialPrint("\tExtra   %u", e);
-  serialPrint("------------");
-  serialPrint("\tTotal   %u", s + w + e);
-#endif
 #endif
   return 0;
 }
+#endif
 
 int cliReboot(const char ** argv)
 {
@@ -753,13 +463,14 @@ const MemArea memAreas[] = {
   { "GPIOD", GPIOD, sizeof(GPIO_TypeDef) },
   { "GPIOE", GPIOE, sizeof(GPIO_TypeDef) },
   { "GPIOF", GPIOF, sizeof(GPIO_TypeDef) },
-  { "GPIOG", GPIOG, sizeof(GPIO_TypeDef) },
   { "USART1", USART1, sizeof(USART_TypeDef) },
   { "USART2", USART2, sizeof(USART_TypeDef) },
   { "USART3", USART3, sizeof(USART_TypeDef) },
-  { NULL, NULL, 0 },
+  { "USART4", USART4, sizeof(USART_TypeDef) },
+  { nullptr, nullptr, 0 },
 };
 
+#if !defined(STM32F0)
 int cliSet(const char ** argv)
 {
   if (!strcmp(argv[1], "rtc")) {
@@ -779,6 +490,7 @@ int cliSet(const char ** argv)
       serialPrint("%s: Invalid arguments \"%s\" \"%s\"", argv[0], argv[1], argv[2]);
     }
   }
+#if !defined(STM32F0)
 #if !defined(SOFTWARE_VOLUME)
   else if (!strcmp(argv[1], "volume")) {
     int level = 0;
@@ -791,8 +503,10 @@ int cliSet(const char ** argv)
     return 0;
   }
 #endif
+#endif // STM32F0
   return 0;
 }
+#endif
 
 
 #if defined(DEBUG_INTERRUPTS)
@@ -828,9 +542,11 @@ void printTaskSwitchLog()
     else if (mixerTaskId == n) {
       serialPrint("%d: mixer", n);
     }
+#if defined(AUDIO)    
     else if (audioTaskId == n) {
       serialPrint("%d: audio", n);
     }
+#endif    
   }
   serialCrlf();
 
@@ -890,8 +606,8 @@ void printDebugTimers()
 }
 #endif
 
-#include "OsMutex.h"
-extern OS_MutexID audioMutex;
+#if defined(AUDIO)
+extern mutex_handle_t audioMutex;
 
 void printAudioVars()
 {
@@ -914,15 +630,17 @@ void printAudioVars()
 
   serialPrint("normalContext: %u", (uint32_t)audioQueue.normalContext.fragment.type);
 
-  serialPrint("audioMutex[%u] = %u", (uint32_t)audioMutex, (uint32_t)MutexTbl[audioMutex].mutexFlag);
+#if defined(RTOS_TINYK)
+  serialPrint("audioMutex: owner %u, waiters 0x%02x", (uint32_t)audioMutex.owner, (uint32_t)audioMutex.waiters);
+#endif
 }
-
+#endif
 
 int cliDisplay(const char ** argv)
 {
   long long int address = 0;
 
-  for (const MemArea * area = memAreas; area->name != NULL; area++) {
+  for (const MemArea * area = memAreas; area->name != nullptr; area++) {
     if (!strcmp(area->name, argv[1])) {
       dump((uint8_t *)area->start, area->size);
       return 0;
@@ -960,20 +678,22 @@ int cliDisplay(const char ** argv)
   }
   else if (!strcmp(argv[1], "outputs")) {
     for (int i=0; i<MAX_OUTPUT_CHANNELS; i++) {
-      serialPrint("outputs[%d] = %04d", i, (int)channelOutputs[i]);
+      serialPrint("CH[%d] = %04d", i, (int)channelOutputs[i]);
     }
   }
+#if defined(RTCLOCK)
   else if (!strcmp(argv[1], "rtc")) {
     struct gtm utm;
     gettime(&utm);
     serialPrint("rtc = %4d-%02d-%02d %02d:%02d:%02d.%02d0", utm.tm_year+TM_YEAR_BASE, utm.tm_mon+1, utm.tm_mday, utm.tm_hour, utm.tm_min, utm.tm_sec, g_ms100);
   }
+#endif
 #if !defined(SOFTWARE_VOLUME)
   else if (!strcmp(argv[1], "volume")) {
     serialPrint("volume = %d", getVolume());
   }
 #endif
-#if defined(STM32)
+#if !defined(STM32F0)
   else if (!strcmp(argv[1], "uid")) {
     char str[LEN_CPU_UID+1];
     getCPUUniqueID(str);
@@ -991,9 +711,10 @@ int cliDisplay(const char ** argv)
         case 2:
           tim = TIM2;
           break;
-        case 13:
-          tim = TIM13;
+        case 17:
+          tim = TIM17;
           break;
+
         default:
           return 0;
       }
@@ -1017,10 +738,13 @@ int cliDisplay(const char ** argv)
       serialPrint(" CCR4   0x%x", tim->CCR4);
     }
   }
+#if !defined(STM32F0)
   else if (!strcmp(argv[1], "dma")) {
     serialPrint("DMA1_Stream7");
     serialPrint(" CR    0x%x", DMA1_Stream7->CR);
   }
+#endif
+
 #if defined(DEBUG_INTERRUPTS)
   else if (!strcmp(argv[1], "int")) {
     printInterrupts();
@@ -1036,9 +760,11 @@ int cliDisplay(const char ** argv)
     printDebugTimers();
   }
 #endif
+#if defined(AUDIO)
   else if (!strcmp(argv[1], "audio")) {
     printAudioVars();
   }
+#endif
 #if defined(DISK_CACHE)
   else if (!strcmp(argv[1], "dc")) {
     DiskCacheStats stats = diskCache.getStats();
@@ -1073,18 +799,12 @@ int cliDebugVars(const char ** argv)
 int cliRepeat(const char ** argv)
 {
   int interval = 0;
-  int counter = 0;
   if (toInt(argv, 1, &interval) > 0 && argv[2]) {
-    interval *= 50;
-    counter = interval;
-    uint8_t c;
-    while (!cliRxFifo.pop(c) || !(c == '\r' || c == '\n' || c == ' ')) {
-      CoTickDelay(10); // 20ms
-      if (++counter >= interval) {
-        cliExecCommand(&argv[2]);
-        counter = 0;
-      }
-    }
+    // Non-blocking: stash "command args..." and return.  handleCli()
+    // re-executes it every <interval> ms from perMain context
+    strcpy(repeatCmd, argv[2]);
+    repeatInterval = (uint32_t)interval / 10;
+    repeatNext = get_tmr10ms();
   }
   else {
     serialPrint("%s: Invalid arguments", argv[0]);
@@ -1165,22 +885,36 @@ int cliBlueTooth(const char ** argv)
 
 const CliCommand cliCommands[] = {
   { "beep", cliBeep, "[<frequency>] [<duration>]" },
+  #if defined(SDCARD)
   { "ls", cliLs, "<directory>" },
   { "read", cliRead, "<filename>" },
   { "readsd", cliReadSD, "<start sector> <sectors count> <read buffer size (sectors)>" },
   { "testsd", cliTestSD, "" },
+  #endif
+  #if defined(AUDIO)
   { "play", cliPlay, "<filename>" },
-  { "print", cliDisplay, "<address> [<size>] | <what>" },
-  { "p", cliDisplay, "<address> [<size>] | <what>" },
+  #endif
   { "reboot", cliReboot, "[wdt]" },
+#if defined(DEBUG)
+#if !defined(STM32F0)
+  { "print", cliDisplay, "<address> [<size>] | <what>" },
+#endif
+  { "p", cliDisplay, "<address> [<size>] | <what>" },
+#if !defined(STM32F0)
   { "set", cliSet, "<what> <value>" },
+#endif
   { "stackinfo", cliStackInfo, "" },
+#if !defined(STM32F0)
   { "meminfo", cliMemoryInfo, "" },
   { "test", cliTest, "new | std::exception | graphics | memspd" },
   { "trace", cliTrace, "on | off" },
+#endif // STM32F0
+#endif // DEBUG
   { "help", cliHelp, "[<command>]" },
+#if !defined(STM32F0)
   { "debugvars", cliDebugVars, "" },
-  { "repeat", cliRepeat, "<interval> <command>" },
+#endif
+  { "repeat", cliRepeat, "<interval in ms> <command>" },
 #if defined(JITTER_MEASURE)
   { "jitter", cliShowJitter, "" },
 #endif
@@ -1190,12 +924,12 @@ const CliCommand cliCommands[] = {
 #if defined(BLUETOOTH)
   { "bt", cliBlueTooth, "<baudrate>|<command>" },
 #endif
-  { NULL, NULL, NULL }  /* sentinel */
+  { nullptr, nullptr, nullptr }  /* sentinel */
 };
 
 int cliHelp(const char ** argv)
 {
-  for (const CliCommand * command = cliCommands; command->name != NULL; command++) {
+  for (const CliCommand * command = cliCommands; command->name != nullptr; command++) {
     if (argv[1][0] == '\0' || !strcmp(command->name, argv[0])) {
       serialPrint("%s %s", command->name, command->args);
       if (argv[1][0] != '\0') {
@@ -1204,7 +938,7 @@ int cliHelp(const char ** argv)
     }
   }
   if (argv[1][0] != '\0') {
-    serialPrint("Invalid command \"%s\"", argv[0]);
+    serialPrint("Invalid cmd \"%s\"", argv[0]);
   }
   return -1;
 }
@@ -1214,12 +948,12 @@ int cliExecCommand(const char ** argv)
   if (argv[0][0] == '\0')
     return 0;
 
-  for (const CliCommand * command = cliCommands; command->name != NULL; command++) {
+  for (const CliCommand * command = cliCommands; command->name != nullptr; command++) {
     if (!strcmp(command->name, argv[0])) {
       return command->func(argv);
     }
   }
-  serialPrint("Invalid command \"%s\"", argv[0]);
+  serialPrint("Invalid cmd \"%s\"", argv[0]);
   return -1;
 }
 
@@ -1241,6 +975,68 @@ int cliExecLine(char * line)
   return cliExecCommand(argv);
 }
 
+void handleCli()
+{
+  static char line[CLI_COMMAND_MAX_LEN+1];
+  static int pos = 0;
+  uint8_t c;
+
+  while (cliRxFifo.pop(c)) {
+    if (repeatInterval > 0) {
+      // A repeat session owns the console: swallow everything except the
+      // stop key, exactly like the old blocking loop discarded input.
+      if (c == '\r' || c == '\n' || c == ' ') {
+        repeatInterval = 0;
+        cliPrompt();
+      }
+      continue;
+    }
+    if (c == 12) {
+      // clear screen
+      serialPrint("\033[2J\033[1;1H");
+      cliPrompt();
+    }
+    else if (c == 127) {
+      // backspace
+      if (pos) {
+        line[--pos] = '\0';
+        serialPutc(c);
+      }
+    }
+    else if (c == '\r' || c == '\n') {
+      // enter
+      serialCrlf();
+      line[pos] = '\0';
+      if (pos == 0 && cliLastLine[0]) {
+        // execute (repeat) last command
+        strcpy(line, cliLastLine);
+      }
+      else {
+        // save new command
+        strcpy(cliLastLine, line);
+      }
+      cliExecLine(line);
+      pos = 0;
+      cliPrompt();
+    }
+    else if (isascii(c) && pos < CLI_COMMAND_MAX_LEN) {
+      line[pos++] = c;
+      serialPutc(c);
+    }
+  }
+
+  // Periodic firing for "repeat": cadence counted from the end of the last
+  // execution, like the old counter reset (set after exec, so a slow command
+  // can't cause back-to-back refires).  The int32_t cast keeps the
+  // comparison wrap-safe.
+  if (repeatInterval > 0 && (int32_t)(get_tmr10ms() - repeatNext) >= 0) {
+    char tmp[CLI_COMMAND_MAX_LEN+1];
+    strcpy(tmp, repeatCmd);
+    cliExecLine(tmp);
+    repeatNext = get_tmr10ms() + repeatInterval;
+  }
+}
+
 void cliTask(void * pdata)
 {
   char line[CLI_COMMAND_MAX_LEN+1];
@@ -1252,7 +1048,7 @@ void cliTask(void * pdata)
     uint8_t c;
 
     while (!cliRxFifo.pop(c)) {
-      CoTickDelay(10); // 20ms
+      sleep_ms(20); // 20ms
     }
 
     if (c == 12) {
@@ -1292,5 +1088,5 @@ void cliTask(void * pdata)
 
 void cliStart()
 {
-  cliTaskId = CoCreateTaskEx(cliTask, NULL, 10, &cliStack.stack[CLI_STACK_SIZE-1], CLI_STACK_SIZE, 1, false);
+  // task_create(&cliTaskId, cliTask, "CLI", cliStack, CLI_STACK_SIZE);
 }

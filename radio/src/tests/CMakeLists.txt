@@ -1,4 +1,4 @@
-set(GTEST_ROOT /usr CACHE string "Base path to Google Test headers and source.")
+set(GTEST_ROOT /usr CACHE STRING "Base path to Google Test headers and source.")
 
 find_path(GTEST_INCDIR gtest/gtest.h HINTS "${GTEST_ROOT}/include" DOC "Path to Google Test header files folder ('gtest/gtest.h').")
 find_path(GTEST_SRCDIR src/gtest-all.cc HINTS "${GTEST_ROOT}" "${GTEST_ROOT}/src/gtest" DOC "Path of Google Test 'src' folder.")
@@ -34,13 +34,22 @@ if(GTEST_INCDIR AND GTEST_SRCDIR AND Qt5Widgets_FOUND)
   endif()
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+  if(CPU_TYPE STREQUAL STM32F0)
+    # Same as targets/simu: STM32F0 LL pointer-to-uint32_t casts only see fake peripherals here.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
+  endif()
 
   use_cxx11()  # ensure gnu++11 in CXX_FLAGS with CMake < 3.1
 
-  add_executable(gtests EXCLUDE_FROM_ALL ${TEST_SRC_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/location.h ${RADIO_SRC} ../targets/simu/simpgmspace.cpp ../targets/simu/simueeprom.cpp ../targets/simu/simufatfs.cpp)
-  qt5_use_modules(gtests Core Widgets)
+  set(SIMU_PLATFORM_SRC ../targets/simu/simpgmspace.cpp ../targets/simu/simueeprom.cpp ../targets/simu/simufatfs.cpp)
+  # Native (pthread) os/ backend, same list as targets/simu
+  list(APPEND SIMU_PLATFORM_SRC ../os/task_native.cpp ../os/time_native.cpp ../os/sleep_native.cpp)
+  if(CPU_TYPE STREQUAL STM32F0)
+    list(APPEND SIMU_PLATFORM_SRC ../targets/simu/simu_f0_memory.cpp)
+  endif()
+  add_executable(gtests EXCLUDE_FROM_ALL ${TEST_SRC_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/location.h ${RADIO_SRC} ${SIMU_PLATFORM_SRC})
   add_dependencies(gtests ${FIRMWARE_DEPENDENCIES} gtests-lib)
-  target_link_libraries(gtests gtests-lib pthread)
+  target_link_libraries(gtests gtests-lib pthread Qt5::Core Qt5::Widgets)
   message(STATUS "Added optional gtests target")
 else()
   message(WARNING "WARNING: gtests target will not be available (check that GTEST_INCDIR, GTEST_SRCDIR, and Qt5Widgets are configured).")

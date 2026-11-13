@@ -22,6 +22,9 @@
 
 uint8_t * lcdLoadBitmap(uint8_t * bmp, const char * filename, uint8_t width, uint8_t height)
 {
+#if !defined(SDCARD)
+  return NULL;
+#else
   FIL bmpFile;
   UINT read;
   uint8_t bmpBuf[LCD_W]; /* maximum with LCD_W */
@@ -156,4 +159,5 @@ uint8_t * lcdLoadBitmap(uint8_t * bmp, const char * filename, uint8_t width, uin
 
   f_close(&bmpFile);
   return bmp;
+  #endif
 }

@@ -22,11 +22,72 @@
 #ifndef _USB_CONF_H_
 #define _USB_CONF_H_
 
-#if defined(STM32F4)
-  #include "STM32F4xx_DSP_StdPeriph_Lib_V1.4.0/Libraries/CMSIS/Device/ST/STM32F4xx/Include/stm32f4xx.h"
-#else
-  #include "STM32F2xx_StdPeriph_Lib_V1.1.0/Libraries/CMSIS/Device/ST/STM32F2xx/Include/stm32f2xx.h"
+#if defined(STM32F0)
+  #include "CMSIS/Device/ST/STM32F0xx/Include/stm32f0xx.h"
 #endif
+
+#if defined(STM32F0)
+/* Select the CRS using HSI48 internal clock as USB clock source.
+    If this define is commented, PLL will be used as USB clock source.
+    User need to ensure that the PLL output clock to USB is 48MHz  for proper 
+    USB functioning */
+#define INTERNAL_PULLUP
+
+#define USB_CLOCK_SOURCE_CRS
+
+// #define USB_DEVICE_LOW_PWR_MGMT_SUPPORT
+
+/* Endpoints used by the device */
+// #define EP_NUM     (2)  /* EP0 + EP1 IN For HID */
+#define EP_NUM    (3) /* EP0 + EP1 for MSC IN + EP2 for MSC OUT */
+// #define EP_NUM     (4)  /* EP0 + EP1 For HID + EP2/EP3 for CDC  */
+
+/* Buffer table base address */
+#define BTABLE_ADDRESS    (0x00)
+
+/* EP0, RX/TX buffers base address */
+#define ENDP0_RX_ADDRESS    (0x18)
+#define ENDP0_TX_ADDRESS    (0x58)
+
+/* EP1, TX buffer base address */
+#define MSC_IN_TX_ADDRESS     (0x98)
+#define HID_IN_TX_ADDRESS     (0x98)
+    
+/* EP2, Rx buffer base address */
+#define MSC_OUT_RX_ADDRESS    (0xD8)
+#define HID_OUT_RX_ADDRESS    (0xD8)
+
+/* EP2 Tx buffer base address */
+#define BULK_IN_TX_ADDRESS  (0xC0) 
+
+/* EP2 Rx buffer base address */
+#define BULK_OUT_RX_ADDRESS (0x110)
+
+/* EP3 Tx buffer base address */
+#define INT_IN_TX_ADDRESS   (0x100)
+
+/* Macro to get variable aligned on 4-bytes, for __ICCARM__ the directive "#pragma data_alignment=4" must be used instead */
+#if defined   (__GNUC__)        /* GNU Compiler */
+  #ifndef __ALIGN_END
+    #define __ALIGN_END    __attribute__ ((aligned (4)))
+  #endif /* __ALIGN_END */
+  #ifndef __ALIGN_BEGIN
+    #define __ALIGN_BEGIN
+  #endif /* __ALIGN_BEGIN */
+#else
+  #ifndef __ALIGN_END
+    #define __ALIGN_END
+  #endif /* __ALIGN_END */
+  #ifndef __ALIGN_BEGIN
+    #if defined   (__CC_ARM)      /* ARM Compiler */
+      #define __ALIGN_BEGIN    __align(4)
+    #elif defined (__ICCARM__)    /* IAR Compiler */
+      #define __ALIGN_BEGIN
+    #endif /* __CC_ARM */
+  #endif /* __ALIGN_BEGIN */
+#endif /* __GNUC__ */
+
+#else // STM32F0
 
 /* USB Core and PHY interface configuration.
    Tip: To avoid modifying these defines each time you need to change the USB
@@ -148,6 +209,8 @@
   #define __ALIGN_BEGIN
   #define __ALIGN_END   
 #endif /* USB_OTG_HS_INTERNAL_DMA_ENABLED */
+
+#endif // STM32F0
 
 /* __packed keyword used to decrease the data type alignment to 1-byte */
 #if !defined(__packed)

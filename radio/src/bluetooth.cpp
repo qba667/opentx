@@ -20,7 +20,7 @@
 
 #include "opentx.h"
 
-#if defined(PCBX7) || defined(PCBHORUS) || defined(USEHORUSBT)
+#if defined(PCBHORUS) || defined(PCBX7) || defined(PCBXLITE) || defined(USEHORUSBT)
 #define BLUETOOTH_COMMAND_NAME         "AT+NAME"
 #define BLUETOOTH_ANSWER_NAME          "OK+"
 #define BLUETOOTH_COMMAND_BAUD_115200  "AT+BAUD115200"
@@ -72,7 +72,7 @@ char * bluetoothReadline(bool error_reset)
 #if defined(PCBX9E) && !defined(USEHORUSBT)     // X9E BT module can get unresponsive
       TRACE("NO RESPONSE FROM BT MODULE");
 #endif
-      return NULL;
+      return nullptr;
     }
     TRACE_NOCRLF("%02X ", byte);
     if (byte == '\n') {
@@ -116,11 +116,11 @@ void bluetoothProcessTrainerFrame(const uint8_t * bluetoothBuffer)
 
   for (uint8_t channel=0, i=1; channel<8; channel+=2, i+=3) {
     // +-500 != 512, but close enough.
-    ppmInput[channel] = bluetoothBuffer[i] + ((bluetoothBuffer[i+1] & 0xf0) << 4) - 1500;
-    ppmInput[channel+1] = ((bluetoothBuffer[i+1] & 0x0f) << 4) + ((bluetoothBuffer[i+2] & 0xf0) >> 4) + ((bluetoothBuffer[i+2] & 0x0f) << 8) - 1500;
+    trainerInput[channel] = bluetoothBuffer[i] + ((bluetoothBuffer[i+1] & 0xf0) << 4) - 1500;
+    trainerInput[channel+1] = ((bluetoothBuffer[i+1] & 0x0f) << 4) + ((bluetoothBuffer[i+2] & 0xf0) >> 4) + ((bluetoothBuffer[i+2] & 0x0f) << 8) - 1500;
   }
 
-  ppmInputValidityTimer = PPM_IN_VALID_TIMEOUT;
+  trainerInputValidityTimer = TRAINER_IN_VALID_TIMEOUT;
 }
 
 void bluetoothAppendTrainerByte(uint8_t data)
@@ -212,7 +212,7 @@ void bluetoothSendTrainer()
 {
   int16_t PPM_range = g_model.extendedLimits ? 640*2 : 512*2;
 
-  int firstCh = g_model.moduleData[TRAINER_MODULE].channelsStart;
+  int firstCh = g_model.trainerData.channelsStart;
   int lastCh = firstCh + 8;
 
   uint8_t * cur = bluetoothBuffer;
@@ -262,6 +262,7 @@ void bluetoothReceiveTrainer()
 #if defined(PCBX9E) && !defined(USEHORUSBT)
 void bluetoothWakeup(void)
 {
+#if !defined(SIMU)
   if (!g_eeGeneral.bluetoothMode) {
     if (bluetoothState != BLUETOOTH_INIT) {
       bluetoothDone();
@@ -279,7 +280,7 @@ void bluetoothWakeup(void)
         uint8_t len = ZLEN(g_eeGeneral.bluetoothName);
         if (len > 0) {
           for (int i = 0; i < len; i++) {
-            *cur++ = idx2char(g_eeGeneral.bluetoothName[i]);
+            *cur++ = zchar2char(g_eeGeneral.bluetoothName[i]);
           }
         }
         else {
@@ -317,6 +318,7 @@ void bluetoothWakeup(void)
       bluetoothSendTrainer();
     }
   }
+#endif
 }
 #else // PCBX9E
 void bluetoothWakeup()
@@ -359,11 +361,11 @@ void bluetoothWakeup()
     bluetoothWakeupTime = now + 10; /* 100ms */
   }
   else if (bluetoothState == BLUETOOTH_STATE_CONNECTED) {
-    if (g_eeGeneral.bluetoothMode == BLUETOOTH_TRAINER && g_model.trainerMode == TRAINER_MODE_MASTER_BLUETOOTH) {
+    if (g_eeGeneral.bluetoothMode == BLUETOOTH_TRAINER && g_model.trainerData.mode == TRAINER_MODE_MASTER_BLUETOOTH) {
       bluetoothReceiveTrainer();
     }
     else {
-      if (g_eeGeneral.bluetoothMode == BLUETOOTH_TRAINER && g_model.trainerMode == TRAINER_MODE_SLAVE_BLUETOOTH) {
+      if (g_eeGeneral.bluetoothMode == BLUETOOTH_TRAINER && g_model.trainerData.mode == TRAINER_MODE_SLAVE_BLUETOOTH) {
         bluetoothSendTrainer();
         bluetoothWakeupTime = now + 2; /* 20ms */
       }
@@ -378,7 +380,7 @@ void bluetoothWakeup()
       uint8_t len = ZLEN(g_eeGeneral.bluetoothName);
       if (len > 0) {
         for (int i = 0; i < len; i++) {
-          *cur++ = idx2char(g_eeGeneral.bluetoothName[i]);
+          *cur++ = zchar2char(g_eeGeneral.bluetoothName[i]);
         }
       }
       else {
@@ -397,7 +399,7 @@ void bluetoothWakeup()
       bluetoothState = BLUETOOTH_STATE_POWER_SENT;
     }
     else if (bluetoothState == BLUETOOTH_STATE_POWER_SENT && (!strncmp(line, "Central:", 8) || !strncmp(line, "Peripheral:", 11))) {
-      if (g_eeGeneral.bluetoothMode == BLUETOOTH_TRAINER && g_model.trainerMode == TRAINER_MODE_MASTER_BLUETOOTH)
+      if (g_eeGeneral.bluetoothMode == BLUETOOTH_TRAINER && g_model.trainerData.mode == TRAINER_MODE_MASTER_BLUETOOTH)
         bluetoothWriteString("AT+ROLE1\r\n");
       else
         bluetoothWriteString("AT+ROLE0\r\n");
@@ -428,7 +430,7 @@ void bluetoothWakeup()
     else if ((bluetoothState == BLUETOOTH_STATE_IDLE || bluetoothState == BLUETOOTH_STATE_DISCONNECTED || bluetoothState == BLUETOOTH_STATE_CONNECT_SENT) && !strncmp(line, "Connected:", 10)) {
       strcpy(bluetoothDistantAddr, &line[10]); // TODO quick & dirty
       bluetoothState = BLUETOOTH_STATE_CONNECTED;
-      if (g_model.trainerMode == TRAINER_MODE_SLAVE_BLUETOOTH) {
+      if (g_model.trainerData.mode == TRAINER_MODE_SLAVE_BLUETOOTH) {
         bluetoothWakeupTime += 500; // it seems a 5s delay is needed before sending the 1st frame
       }
     }

@@ -34,16 +34,17 @@ void displaySwitchState(uint8_t x, uint8_t y, uint8_t sw)
 }
 #endif
 
+#if defined(MENU_DIAG_ANAS_KEYS)
 void menuRadioDiagKeys(event_t event)
 {
-  SIMPLE_MENU(STR_MENU_RADIO_SWITCHES, menuTabGeneral, MENU_RADIO_SWITCHES_TEST, 1);
+  SIMPLE_SUBMENU(STR_MENU_RADIO_SWITCHES, 1);
 
   lcdDrawText(14*FW, MENU_HEADER_HEIGHT+2*FH, STR_VTRIM);
 
-  for (uint8_t i=0; i<9; i++) {
+  for (uint32_t i=0; i<9; i++) {
     coord_t y;
 
-    if (i < 8) {
+    if (i < NUM_TRIMS_KEYS) {
       y = MENU_HEADER_HEIGHT + FH*3 + FH*(i/2);
       if (i&1) lcdDraw1bitBitmap(14*FW, y, sticks, i/2, 0);
       displayKeyState(i&1? 20*FW : 18*FW, y, TRM_BASE+i);
@@ -60,7 +61,14 @@ void menuRadioDiagKeys(event_t event)
 #elif defined(PCBXLITE)
       y = MENU_HEADER_HEIGHT + FH*i;
       lcdDrawTextAtIndex(0, y, STR_VKEYS, (TRM_BASE-1-i), 0);
-      displayKeyState(5*FW+2, y, KEY_MENU+(TRM_BASE-1-i));
+      displayKeyState(5*FW+2, y, KEY_SHIFT+(TRM_BASE-1-i));
+#elif defined(PCBI6X)
+      y = MENU_HEADER_HEIGHT + FH + FH*i;
+      if (i >= 1) {
+        // hide not existing LEFT key
+        lcdDrawTextAtIndex(0, y-FH, STR_VKEYS, (TRM_BASE-1-i), 0);
+        displayKeyState(5*FW+2, y-FH, KEY_MENU+(TRM_BASE-1-i));
+      }
 #else
       y = MENU_HEADER_HEIGHT + FH + FH*i;
       lcdDrawTextAtIndex(0, y, STR_VKEYS, (TRM_BASE-1-i), 0);
@@ -68,7 +76,7 @@ void menuRadioDiagKeys(event_t event)
 #endif
     }
 
-#if defined(PCBTARANIS)
+#if defined(PCBTARANIS) || defined(PCBI6X)
     if (i < NUM_SWITCHES) {
       if (SWITCH_EXISTS(i)) {
         getvalue_t val = getValue(MIXSRC_FIRST_SWITCH+i);
@@ -86,7 +94,7 @@ void menuRadioDiagKeys(event_t event)
   }
 
 #if defined(ROTARY_ENCODER_NAVIGATION)
-  for (uint8_t i=0; i<DIM(rotencValue); i++) {
+  for (uint32_t i=0; i<DIM(rotencValue); i++) {
 
 #if defined(PCBX7)
     coord_t y = MENU_HEADER_HEIGHT + FH;
@@ -108,3 +116,4 @@ void menuRadioDiagKeys(event_t event)
 #endif
 
 }
+#endif

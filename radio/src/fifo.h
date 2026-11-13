@@ -21,6 +21,8 @@
 #ifndef _FIFO_H_
 #define _FIFO_H_
 
+#include <inttypes.h>
+
 template <class T, int N>
 class Fifo
 {
@@ -40,7 +42,7 @@ class Fifo
 
     void push(T element)
     {
-      uint32_t next = (widx+1) & (N-1);
+      uint32_t next = nextIndex(widx);
       if (next != ridx) {
         fifo[widx] = element;
         widx = next;
@@ -54,7 +56,7 @@ class Fifo
       }
       else {
         element = fifo[ridx];
-        ridx = (ridx+1) & (N-1);
+        ridx = nextIndex(ridx);
         return true;
       }
     }
@@ -64,23 +66,23 @@ class Fifo
       return (ridx == widx);
     }
 
-    bool isFull()
+    bool isFull() const
     {
-      uint32_t next = (widx+1) & (N-1);
+      uint32_t next = nextIndex(widx);
       return (next == ridx);
     }
 
     void flush()
     {
-      while (!isEmpty()) {};
+      while (!isEmpty());
     }
 
     uint32_t size() const
     {
-      return (N + widx - ridx) & (N-1);
+      return (N + widx - ridx) & (N - 1);
     }
 
-    uint32_t hasSpace(uint32_t n) const
+    bool hasSpace(uint32_t n) const
     {
       return (N > (size() + n));
     }
@@ -100,6 +102,11 @@ class Fifo
     T fifo[N];
     volatile uint32_t widx;
     volatile uint32_t ridx;
+
+    static inline uint32_t nextIndex(uint32_t idx)
+    {
+      return (idx + 1) & (N - 1);
+    }
 };
 
 #endif // _FIFO_H_

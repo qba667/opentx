@@ -27,8 +27,8 @@ template <int N>
 class DMAFifo
 {
   public:
-    DMAFifo(DMA_Stream_TypeDef * stream):
-      stream(stream),
+    explicit DMAFifo(DMA_Channel_TypeDef * channel):
+      channel(channel),
       ridx(0)
     {
     }
@@ -43,9 +43,14 @@ class DMAFifo
       return N;
     }
 
+    uint32_t used() const
+    {
+      return (N - channel->CNDTR - ridx) & (N-1);
+    }
+
     uint8_t last(int index)
     {
-      return fifo[(2*N - stream->NDTR - index) & (N-1)];
+      return fifo[(2*N - channel->CNDTR - index) & (N-1)];
     }
 
     bool isEmpty()
@@ -53,7 +58,7 @@ class DMAFifo
 #if defined(SIMU)
       return true;
 #endif
-      return (ridx == N - stream->NDTR);
+      return (ridx == N - channel->CNDTR);
     }
 
     bool pop(uint8_t & element)
@@ -68,14 +73,39 @@ class DMAFifo
       }
     }
 
+    // Move up to len received bytes to buf, returns the count
+    // (EdgeTX serial driver copyRxBuffer()). Single reader, like pop().
+    uint32_t copy(uint8_t * buf, uint32_t len)
+    {
+#if defined(SIMU)
+      return 0;
+#endif
+      uint32_t n = used();  // one CNDTR read for the whole copy
+      if (n > len) {
+        n = len;
+      }
+      for (uint32_t i = 0; i < n; i++) {
+        buf[i] = fifo[(ridx + i) & (N-1)];
+      }
+      ridx = (ridx + n) & (N-1);
+      return n;
+    }
+
+    // Drop all received bytes: move ridx to the DMA write position
+    // (EdgeTX serial driver clearRxBuffer() / _dma_clear()). Single reader.
+    void discard()
+    {
+      ridx = (N - channel->CNDTR) & (N-1);
+    }
+
     uint8_t * buffer()
     {
       return fifo;
     }
 
+    DMA_Channel_TypeDef * channel;
   protected:
     uint8_t fifo[N];
-    DMA_Stream_TypeDef * stream;
     volatile uint32_t ridx;
 };
 

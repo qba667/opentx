@@ -63,13 +63,14 @@ void pushMenu(MenuHandlerFunc newMenu)
   TRACE("pushMenu(%d, %p)", menuLevel, newMenu);
 }
 
-#if defined(CPUARM)
 void menuModelNotes(event_t event)
 {
   if (event == EVT_ENTRY) {
-    strcpy(s_text_file, MODELS_PATH "/");
-    char *buf = strcat_modelname(&s_text_file[sizeof(MODELS_PATH)], g_eeGeneral.currModel);
+#if defined(SDCARD)
+    strcpy(reusableBuffer.viewText.filename, MODELS_PATH "/");
+    char *buf = strcat_modelname(&reusableBuffer.viewText.filename[sizeof(MODELS_PATH)], g_eeGeneral.currModel);
     strcpy(buf, TEXT_EXT);
+#endif
   }
 
   menuTextView(event);
@@ -79,4 +80,3 @@ void pushModelNotes()
 {
   pushMenu(menuModelNotes);
 }
-#endif

@@ -21,7 +21,6 @@
 #include "opentx.h"
 
 #define EXPO_ONE_2ND_COLUMN (7*FW+3*FW+2)
-#define EXPO_ONE_FM_WIDTH   (5*FW)
 
 int expoFn(int x)
 {
@@ -40,6 +39,7 @@ void drawFunction(FnFuncP fn, uint8_t offset)
 
   for (int xv=-CURVE_SIDE_WIDTH; xv<=CURVE_SIDE_WIDTH; xv++) {
     coord_t yv = (LCD_H-1) - (((uint16_t)RESX + fn(xv * (RESX/CURVE_SIDE_WIDTH))) / 2 * (LCD_H-1) / RESX);
+    yv = limit (0, yv, LCD_H-1);
     if (prev_yv != (coord_t)-1) {
       if (abs((int8_t)yv-prev_yv) <= 1) {
         lcdDrawPoint(CURVE_CENTER_X+xv-offset-1, prev_yv, FORCE);
@@ -60,8 +60,8 @@ enum ExposFields {
   EXPO_FIELD_SCALE,
   EXPO_FIELD_WEIGHT,
   EXPO_FIELD_OFFSET,
-  CASE_CURVES(EXPO_FIELD_CURVE_LABEL)
-  CASE_CURVES(EXPO_FIELD_CURVE)
+  EXPO_FIELD_CURVE_LABEL,
+  EXPO_FIELD_CURVE,
   CASE_FLIGHT_MODES(EXPO_FIELD_FLIGHT_MODES_LABEL)
   CASE_FLIGHT_MODES(EXPO_FIELD_FLIGHT_MODES)
   EXPO_FIELD_SWITCH,
@@ -72,15 +72,21 @@ enum ExposFields {
 
 void menuModelExpoOne(event_t event)
 {
+#if defined(NAVIGATION_X7)
   if (event == EVT_KEY_LONG(KEY_MENU)) {
-    // TODO pushMenu(menuChannelsView);
+    pushMenu(menuChannelsView);
     killEvents(event);
   }
-
+#elif defined(NAVIGATION_XLITE)
+  if (event == EVT_KEY_LONG(KEY_SHIFT)) {
+    pushMenu(menuChannelsView);
+    killEvents(event);
+  }
+#endif
   ExpoData * ed = expoAddress(s_currIdx);
   drawSource(PSIZE(TR_MENUINPUTS)*FW+FW, 0, MIXSRC_FIRST_INPUT+ed->chn, 0);
   
-  SUBMENU(STR_MENUINPUTS, EXPO_FIELD_MAX, {0, 0, 0, ed->srcRaw >= MIXSRC_FIRST_TELEM ? (uint8_t)0 : (uint8_t)HIDDEN_ROW, 0, 0, CASE_CURVES(LABEL(Curve)) CASE_CURVES(1) CASE_FLIGHT_MODES(LABEL(Flight Mode)) CASE_FLIGHT_MODES((MAX_FLIGHT_MODES-1) | NAVIGATION_LINE_BY_LINE) 0 /*, ...*/});
+  SUBMENU(STR_MENUINPUTS, EXPO_FIELD_MAX, {0, 0, 0, ed->srcRaw >= MIXSRC_FIRST_TELEM ? (uint8_t)0 : (uint8_t)HIDDEN_ROW, 0, 0, LABEL(Curve), 1, CASE_FLIGHT_MODES(LABEL(Flight Mode)) CASE_FLIGHT_MODES((MAX_FLIGHT_MODES-1) | NAVIGATION_LINE_BY_LINE) 0 /*, ...*/});
 
   int8_t sub = menuVerticalPosition;
 
@@ -105,14 +111,14 @@ void menuModelExpoOne(event_t event)
         break;
 
       case EXPO_FIELD_SOURCE:
-        lcdDrawTextAlignedLeft(y, NO_INDENT(STR_SOURCE));
+        lcdDrawTextAlignedLeft(y, STR_SOURCE);
         drawSource(EXPO_ONE_2ND_COLUMN, y, ed->srcRaw, RIGHT|STREXPANDED|attr);
-        if (attr) ed->srcRaw = checkIncDec(event, ed->srcRaw, INPUTSRC_FIRST, INPUTSRC_LAST, EE_MODEL|INCDEC_SOURCE|NO_INCDEC_MARKS, isInputSourceAvailable);
+        if (attr) ed->srcRaw = checkIncDec(event, ed->srcRaw, INPUTSRC_FIRST, INPUTSRC_LAST, EE_MODEL|INCDEC_SOURCE|NO_INCDEC_MARKS, isSourceAvailableInInputs);
         break;
 
       case EXPO_FIELD_SCALE:
         lcdDrawTextAlignedLeft(y, STR_SCALE);
-        drawSensorCustomValue(EXPO_ONE_2ND_COLUMN, y, (ed->srcRaw - MIXSRC_FIRST_TELEM)/3, convertTelemValue(ed->srcRaw - MIXSRC_FIRST_TELEM + 1, ed->scale), attr);
+        drawSensorCustomValue(EXPO_ONE_2ND_COLUMN, y, (ed->srcRaw - MIXSRC_FIRST_TELEM)/3, convertTelemValue(ed->srcRaw - MIXSRC_FIRST_TELEM + 1, ed->scale),  RIGHT | attr);
         if (attr) ed->scale = checkIncDec(event, ed->scale, 0, maxTelemValue(ed->srcRaw - MIXSRC_FIRST_TELEM + 1), EE_MODEL);
         break;
 
@@ -122,11 +128,10 @@ void menuModelExpoOne(event_t event)
         break;
 
       case EXPO_FIELD_OFFSET:
-        lcdDrawTextAlignedLeft(y, NO_INDENT(STR_OFFSET));
+        lcdDrawTextAlignedLeft(y, STR_OFFSET);
         ed->offset = GVAR_MENU_ITEM(EXPO_ONE_2ND_COLUMN, y, ed->offset, -100, 100, RIGHT | attr, 0, event);
         break;
 
-#if defined(CURVES)
       case EXPO_FIELD_CURVE_LABEL:
         lcdDrawTextAlignedLeft(y, STR_CURVE);
         break;
@@ -134,7 +139,6 @@ void menuModelExpoOne(event_t event)
       case EXPO_FIELD_CURVE:
         editCurveRef(EXPO_ONE_2ND_COLUMN, y, ed->curve, s_editMode > 0 ? event : 0, RIGHT | attr);
         break;
-#endif
 
 #if defined(FLIGHT_MODES)
       case EXPO_FIELD_FLIGHT_MODES_LABEL:

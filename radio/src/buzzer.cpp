@@ -20,41 +20,12 @@
 
 #include "opentx.h"
 
-uint8_t g_beepCnt;
-uint8_t beepAgain = 0;
-uint8_t beepAgainOrig = 0;
-uint8_t beepOn = false;
-bool warble = false;
-bool warbleC;
+#if !defined(DFPLAYER)
+#define pushPrompt(value)
+#define pushCustomPrompt(value)
+#define pushNumberPrompt(value)
 
-// The various "beep" tone lengths
-static const pm_uint8_t beepTab[] PROGMEM = {
-    // key, trim, warn2, warn1, error
-    1,  1,  2, 10,  60, //xShort
-    1,  1,  4, 20,  80, //short
-    1,  1,  8, 30, 100, //normal
-    2,  2, 15, 40, 120, //long
-    5,  5, 30, 50, 150, //xLong
-};
-
-void beep(uint8_t val)
-{
-#if defined(HAPTIC) && !defined(AUDIO)
-  // completely untested
-  if (val == 0)
-    haptic.play(5, 0, PLAY_NOW);
-  else
-    haptic.event(AU_ERROR);
-#endif
-
-#if !defined(AUDIO)
-  if (g_eeGeneral.alarmsFlash && val>1) {
-    flashCounter = FLASH_DURATION;
-  }
-#endif
-
-  if (g_eeGeneral.beepMode>0 || (g_eeGeneral.beepMode==0 && val!=0) || (g_eeGeneral.beepMode==-1 && val>=3)) {
-    _beep(pgm_read_byte(beepTab+5*(2+g_eeGeneral.beepLength)+val));
-  }
+bool isPlaying(uint8_t id){
+	return false;
 }
-
+#endif

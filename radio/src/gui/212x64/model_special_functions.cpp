@@ -52,7 +52,7 @@ void onCustomFunctionsFileSelectionMenu(const char * result)
       strcpy(directory, SOUNDS_PATH);
       strncpy(directory+SOUNDS_PATH_LNG_OFS, currentLanguagePack->id, 2);
     }
-    if (!sdListFiles(directory, func==FUNC_PLAY_SCRIPT ? SCRIPTS_EXT : SOUNDS_EXT, sizeof(cfn->play.name), NULL)) {
+    if (!sdListFiles(directory, func==FUNC_PLAY_SCRIPT ? SCRIPTS_EXT : SOUNDS_EXT, sizeof(cfn->play.name), nullptr)) {
       POPUP_WARNING(func==FUNC_PLAY_SCRIPT ? STR_NO_SCRIPTS_ON_SD : STR_NO_SOUNDS_ON_SD);
     }
   }
@@ -146,14 +146,17 @@ enum CustomFunctionsItems {
 
 void menuSpecialFunctions(event_t event, CustomFunctionData * functions, CustomFunctionsContext * functionsContext)
 {
+  TRACE("menuSpecialFunctions");
   int sub = menuVerticalPosition;
   uint8_t eeFlags = (functions == g_model.customFn) ? EE_MODEL : EE_GENERAL;
   if (menuHorizontalPosition<0 && event==EVT_KEY_LONG(KEY_ENTER) && !READ_ONLY()) {
     killEvents(event);
+    TRACE("Functions:");
+    DUMP(functions, sizeof(CustomFunctionData));
     CustomFunctionData *cfn = &functions[sub];
     if (!CFN_EMPTY(cfn))
       POPUP_MENU_ADD_ITEM(STR_COPY);
-    if (clipboard.type == CLIPBOARD_TYPE_CUSTOM_FUNCTION)
+    if (clipboard.type == CLIPBOARD_TYPE_CUSTOM_FUNCTION && isAssignableFunctionAvailable(clipboard.data.cfn.func))
       POPUP_MENU_ADD_ITEM(STR_PASTE);
     if (!CFN_EMPTY(cfn) && CFN_EMPTY(&functions[MAX_SPECIAL_FUNCTIONS-1]))
       POPUP_MENU_ADD_ITEM(STR_INSERT);
@@ -262,10 +265,12 @@ void menuSpecialFunctions(event_t event, CustomFunctionData * functions, CustomF
             lcdDrawNumber(MODEL_SPECIAL_FUNC_3RD_COLUMN, y, val_displayed, attr|LEFT);
           }
 #endif
-          else if (func >= FUNC_SET_FAILSAFE && func <= FUNC_BIND) {
+#if defined(DANGEROUS_MODULE_FUNCTIONS)
+          else if (func >= FUNC_RANGECHECK && func <= FUNC_BIND) {
             val_max = NUM_MODULES-1;
             lcdDrawTextAtIndex(MODEL_SPECIAL_FUNC_3RD_COLUMN, y, "\004Int.Ext.", CFN_PARAM(cfn), attr);
           }
+#endif
           else if (func == FUNC_SET_TIMER) {
             getMixSrcRange(MIXSRC_FIRST_TIMER, val_min, val_max);
             drawTimer(MODEL_SPECIAL_FUNC_3RD_COLUMN, y, val_displayed, attr|LEFT|TIMEHOUR, attr);
@@ -332,14 +337,14 @@ void menuSpecialFunctions(event_t event, CustomFunctionData * functions, CustomF
               lcdDrawMMM(MODEL_SPECIAL_FUNC_3RD_COLUMN, y, attr);
             }
           }
-#if defined(PCBX9E) || defined(PCBX9DP)
           else if (func == FUNC_BACKLIGHT) {
-            drawSlider(MODEL_SPECIAL_FUNC_3RD_COLUMN, y, CFN_PARAM(cfn), 100, attr);
-            if (active) INCDEC_SET_FLAG(eeFlags | NO_INCDEC_MARKS);
-            val_min = 0;
-            val_max = 100;
+            val_max = MIXSRC_LAST_CH;
+            drawSource(MODEL_SPECIAL_FUNC_3RD_COLUMN, y, val_displayed, attr);
+            if (active) {
+              INCDEC_SET_FLAG(eeFlags | INCDEC_SOURCE);
+              INCDEC_ENABLE_CHECK(isSourceAvailable);
+            }
           }
-#endif
 #if defined(GVARS)
           else if (func == FUNC_ADJUST_GVAR) {
             switch (CFN_GVAR_MODE(cfn)) {
@@ -364,6 +369,7 @@ void menuSpecialFunctions(event_t event, CustomFunctionData * functions, CustomF
                 break;
               default: // FUNC_ADJUST_GVAR_INC
                 getMixSrcRange(CFN_GVAR_INDEX(cfn) + MIXSRC_FIRST_GVAR, val_min, val_max);
+                getGVarIncDecRange(val_min, val_max);
                 lcdDrawText(MODEL_SPECIAL_FUNC_3RD_COLUMN, y, (val_displayed < 0 ? "-= " : "+= "), attr);
                 drawGVarValue(lcdNextPos, y, CFN_GVAR_INDEX(cfn), abs(val_displayed), attr|LEFT);
                 break;

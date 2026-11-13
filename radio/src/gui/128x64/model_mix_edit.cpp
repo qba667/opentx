@@ -26,7 +26,7 @@ enum MixFields {
   MIX_FIELD_WEIGHT,
   MIX_FIELD_OFFSET,
   MIX_FIELD_TRIM,
-  CASE_CURVES(MIX_FIELD_CURVE)
+  MIX_FIELD_CURVE,
   CASE_FLIGHT_MODES(MIX_FIELD_FLIGHT_MODE)
   MIX_FIELD_SWITCH,
   MIX_FIELD_WARNING,
@@ -70,13 +70,13 @@ void drawOffsetBar(uint8_t x, uint8_t y, MixData * md)
   }
   lcdDrawSolidVerticalLine(x+gaugeWidth/2-1, y, gaugeHeight+1);
   if (barMin == -101) {
-    for (uint8_t i=0; i<3; ++i) {
+    for (uint32_t i=0; i<3; ++i) {
       lcdDrawPoint(x+i, y+4-i);
       lcdDrawPoint(x+3+i, y+4-i);
     }
   }
   if (barMax == 101) {
-    for (uint8_t i=0; i<3; ++i) {
+    for (uint32_t i=0; i<3; ++i) {
       lcdDrawPoint(x+gaugeWidth-8+i, y+4-i);
       lcdDrawPoint(x+gaugeWidth-5+i, y+4-i);
     }
@@ -85,15 +85,21 @@ void drawOffsetBar(uint8_t x, uint8_t y, MixData * md)
 
 void menuModelMixOne(event_t event)
 {
+#if defined(NAVIGATION_X7)
   if (event == EVT_KEY_LONG(KEY_MENU)) {
-    // TODO pushMenu(menuChannelsView);
+    pushMenu(menuChannelsView);
     killEvents(event);
   }
-
+#elif defined(NAVIGATION_XLITE)
+  if (event == EVT_KEY_LONG(KEY_SHIFT)) {
+    pushMenu(menuChannelsView);
+    killEvents(event);
+  }
+#endif
   MixData * md2 = mixAddress(s_currIdx) ;
   putsChn(PSIZE(TR_MIXER)*FW+FW, 0, md2->destCh+1,0);
   
-  SUBMENU(STR_MIXER, MIX_FIELD_COUNT, {0, 0, 0, 0, 0, CASE_CURVES(1) CASE_FLIGHT_MODES((MAX_FLIGHT_MODES-1) | NAVIGATION_LINE_BY_LINE) 0, 0 /*, ...*/});
+  SUBMENU(STR_MIXER, MIX_FIELD_COUNT, {0, 0, 0, 0, 0, 1, CASE_FLIGHT_MODES((MAX_FLIGHT_MODES-1) | NAVIGATION_LINE_BY_LINE) 0, 0 /*, ...*/});
   
   int8_t sub = menuVerticalPosition;
   int8_t editMode = s_editMode;
@@ -115,7 +121,7 @@ void menuModelMixOne(event_t event)
         break;
 
       case MIX_FIELD_SOURCE:
-        lcdDrawTextAlignedLeft(y, NO_INDENT(STR_SOURCE));
+        lcdDrawTextAlignedLeft(y, STR_SOURCE);
         drawSource(MIXES_2ND_COLUMN, y, md2->srcRaw, STREXPANDED|attr);
         if (attr) CHECK_INCDEC_MODELSOURCE(event, md2->srcRaw, 1, MIXSRC_LAST);
         break;
@@ -127,7 +133,7 @@ void menuModelMixOne(event_t event)
 
       case MIX_FIELD_OFFSET:
       {
-        lcdDrawTextAlignedLeft(y, NO_INDENT(STR_OFFSET));
+        lcdDrawTextAlignedLeft(y, STR_OFFSET);
         u_int8int16_t offset;
         MD_OFFSET_TO_UNION(md2, offset);
         offset.word = GVAR_MENU_ITEM(MIXES_2ND_COLUMN, y, offset.word, GV_RANGELARGE_OFFSET_NEG, GV_RANGELARGE_OFFSET, attr|LEFT, 0, event);
@@ -142,12 +148,10 @@ void menuModelMixOne(event_t event)
         if (attr) md2->carryTrim = !checkIncDecModel(event, !md2->carryTrim, 0, 1);
         break;
 
-#if defined(CURVES)
       case MIX_FIELD_CURVE:
         lcdDrawTextAlignedLeft(y, STR_CURVE);
         editCurveRef(MIXES_2ND_COLUMN, y, md2->curve, event, attr);
         break;
-#endif
 
 #if defined(FLIGHT_MODES)
       case MIX_FIELD_FLIGHT_MODE:
@@ -161,7 +165,7 @@ void menuModelMixOne(event_t event)
         break;
 
       case MIX_FIELD_WARNING:
-        drawFieldLabel(MIXES_2ND_COLUMN, y, STR_MIXWARNING);
+        lcdDrawTextAlignedLeft(y, STR_MIXWARNING);
         if (md2->mixWarn)
           lcdDrawNumber(MIXES_2ND_COLUMN, y, md2->mixWarn, attr|LEFT);
         else
@@ -174,19 +178,19 @@ void menuModelMixOne(event_t event)
         break;
 
       case MIX_FIELD_DELAY_UP:
-        md2->delayUp = EDIT_DELAY(0, y, event, attr, STR_DELAYUP, md2->delayUp);
+        md2->delayUp = editDelay(y, event, attr, STR_DELAYUP, md2->delayUp);
         break;
 
       case MIX_FIELD_DELAY_DOWN:
-        md2->delayDown = EDIT_DELAY(0, y, event, attr, STR_DELAYDOWN, md2->delayDown);
+        md2->delayDown = editDelay(y, event, attr, STR_DELAYDOWN, md2->delayDown);
         break;
 
       case MIX_FIELD_SLOW_UP:
-        md2->speedUp = EDIT_DELAY(0, y, event, attr, STR_SLOWUP, md2->speedUp);
+        md2->speedUp = editDelay(y, event, attr, STR_SLOWUP, md2->speedUp);
         break;
 
       case MIX_FIELD_SLOW_DOWN:
-        md2->speedDown = EDIT_DELAY(0, y, event, attr, STR_SLOWDOWN, md2->speedDown);
+        md2->speedDown = editDelay(y, event, attr, STR_SLOWDOWN, md2->speedDown);
         break;
     }
   }

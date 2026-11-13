@@ -34,17 +34,12 @@ void drawStick(coord_t centrex, int16_t xval, int16_t yval)
 
 void drawCheckBox(coord_t x, coord_t y, uint8_t value, LcdFlags attr)
 {
-#if defined(GRAPHICS)
   if (value)
     lcdDrawChar(x+1, y, '#');
   if (attr)
     lcdDrawSolidFilledRect(x, y, 7, 7);
   else
     lcdDrawSquare(x, y, 7);
-#else
-  /* ON / OFF version */
-  lcdDrawTextAtIndex(x, y, STR_OFFON, value, attr ? INVERS:0) ;
-#endif
 }
 
 void drawScreenIndex(uint8_t index, uint8_t count, uint8_t attr)
@@ -55,7 +50,6 @@ void drawScreenIndex(uint8_t index, uint8_t count, uint8_t attr)
   lcdDrawNumber(x, 0, index+1, RIGHT | attr);
 }
 
-#if !defined(CPUM64)
 void drawVerticalScrollbar(coord_t x, coord_t y, coord_t h, uint16_t offset, uint16_t count, uint8_t visible)
 {
   lcdDrawVerticalLine(x, y, h, DOTTED);
@@ -65,57 +59,81 @@ void drawVerticalScrollbar(coord_t x, coord_t y, coord_t h, uint16_t offset, uin
     yhgt = h - yofs;
   lcdDrawVerticalLine(x, y + yofs, yhgt, SOLID, FORCE);
 }
-#endif
 
-void title(const pm_char * s)
+void drawGauge(coord_t x, coord_t y, coord_t w, coord_t h, int32_t val, int32_t max)
+{
+#if defined(PCBX7) || defined(PCBX9LITES) || defined(PCBI6X) // X7 LCD doesn't like too many horizontal lines
+  h++;
+#else
+  lcdDrawRect(x, y, w+1, h);
+#endif
+  lcdDrawFilledRect(x+1, y+1, w-1, 4, SOLID, ERASE);
+  coord_t len = limit((uint8_t)1, uint8_t((abs(val) * w/2 + max/2) / max), uint8_t(w/2));
+  coord_t x0 = (val>0) ? x+w/2 : x+1+w/2-len;
+  for (coord_t i=h-2; i>0; i--) {
+    lcdDrawSolidHorizontalLine(x0, y+i, len);
+  }
+}
+
+void title(const char * s)
 {
   lcdDrawText(0, 0, s, INVERS);
 }
 
-choice_t editChoice(coord_t x, coord_t y, const pm_char * label, const pm_char *values, choice_t value, choice_t min, choice_t max, LcdFlags attr, event_t event)
+choice_t editChoice(coord_t x, coord_t y, const char * label, const char *values, choice_t value, choice_t min, choice_t max, LcdFlags attr, event_t event, coord_t lblX, IsValueAvailable isValueAvailable)
 {
-  drawFieldLabel(x, y, label);
+  if (label) {
+    lcdDrawText(lblX, y, label);
+  }
   if (values) lcdDrawTextAtIndex(x, y, values, value-min, attr);
-  if (attr & (~RIGHT)) value = checkIncDec(event, value, min, max, (menuVerticalPositions[0] == 0) ? EE_MODEL : EE_GENERAL);
+  if (attr & (~RIGHT)) value = checkIncDec(event, value, min, max, (menuVerticalPositions[0] == 0) ? EE_MODEL : EE_GENERAL, isValueAvailable);
   return value;
 }
 
-uint8_t editCheckBox(uint8_t value, coord_t x, coord_t y, const pm_char *label, LcdFlags attr, event_t event )
+choice_t editChoice(coord_t x, coord_t y, const char * label, const char *values, choice_t value, choice_t min, choice_t max, LcdFlags attr, event_t event, coord_t lblX)
 {
-#if defined(GRAPHICS)
+  return editChoice(x, y, label, values, value, min, max, attr, event, lblX, nullptr);
+}
+
+choice_t editChoice(coord_t x, coord_t y, const char * label, const char *values, choice_t value, choice_t min, choice_t max, LcdFlags attr, event_t event)
+{
+  return editChoice(x, y, label, values, value, min, max, attr, event, 0, nullptr);
+}
+
+uint8_t editCheckBox(uint8_t value, coord_t x, coord_t y, const char *label, LcdFlags attr, event_t event, coord_t lblX)
+{
   drawCheckBox(x, y, value, attr);
-  return editChoice(x, y, label, NULL, value, 0, 1, attr, event);
-#else
-  return editChoice(x, y, label, STR_OFFON, value, 0, 1, attr, event);
-#endif
+  return editChoice(x, y, label, nullptr, value, 0, 1, attr, event, lblX);
+}
+
+uint8_t editCheckBox(uint8_t value, coord_t x, coord_t y, const char *label, LcdFlags attr, event_t event)
+{
+  return editCheckBox(value, x, y, label, attr, event, 0);
 }
 
 int8_t editSwitch(coord_t x, coord_t y, int8_t value, LcdFlags attr, event_t event)
 {
-  drawFieldLabel(x, y, STR_SWITCH);
+  lcdDrawTextAlignedLeft(y, STR_SWITCH);
   drawSwitch(x,  y, value, attr);
   if (attr & (~RIGHT)) CHECK_INCDEC_MODELSWITCH(event, value, SWSRC_FIRST_IN_MIXES, SWSRC_LAST_IN_MIXES, isSwitchAvailableInMixes);
   return value;
 }
 
-#if !defined(CPUM64)
+void drawSlider(coord_t x, coord_t y, uint8_t width, uint8_t value, uint8_t max, uint8_t attr)
+{
+  lcdDrawChar(x + (value * (width - FWNUM)) / max, y, '$');
+  lcdDrawSolidHorizontalLine(x, y + 3, width, FORCE);
+  if (attr && (!(attr & BLINK) || !BLINK_ON_PHASE)) {
+    lcdDrawSolidFilledRect(x, y, width, FH - 1);
+  }
+}
+
 void drawSlider(coord_t x, coord_t y, uint8_t value, uint8_t max, uint8_t attr)
 {
-  lcdDrawChar(x+(value*4*FW)/max, y, '$');
-  lcdDrawSolidHorizontalLine(x, y+3, 5*FW-1, FORCE);
-  if (attr && (!(attr & BLINK) || !BLINK_ON_PHASE)) lcdDrawSolidFilledRect(x, y, 5*FW-1, FH-1);
+  drawSlider(x, y, 5*FW - 1, value, max, attr);
 }
-#elif defined(GRAPHICS)
-void display5posSlider(coord_t x, coord_t y, uint8_t value, uint8_t attr)
-{
-  lcdDrawChar(x+2*FW+(value*FW), y, '$');
-  lcdDrawSolidHorizontalLine(x, y+3, 5*FW-1, SOLID);
-  if (attr && (!(attr & BLINK) || !BLINK_ON_PHASE)) lcdDrawSolidFilledRect(x, y, 5*FW-1, FH-1);
-}
-#endif
 
-
-#if defined(GVARS) && defined(CPUARM)
+#if defined(GVARS)
 void drawGVarValue(coord_t x, coord_t y, uint8_t gvar, gvar_t value, LcdFlags flags)
 {
   uint8_t prec = g_model.gvars[gvar].prec;
@@ -235,7 +253,7 @@ void drawStatusLine()
     }
 
     lcdDrawFilledRect(0, LCD_H-statusLineHeight, LCD_W, FH, SOLID, ERASE);
-    lcdDrawText(5, LCD_H+1-statusLineHeight, statusLineMsg, BSS);
+    lcdDrawText(5, LCD_H+1-statusLineHeight, statusLineMsg);
     lcdDrawFilledRect(0, LCD_H-statusLineHeight, LCD_W, FH, SOLID);
   }
 }
@@ -257,8 +275,21 @@ void drawProgressBar(const char * label, int num, int den)
   lcdRefresh();
 }
 
-#if defined(CPUARM) || defined(CPUM2560)
-const pm_uchar SLEEP_BITMAP[] PROGMEM = {
+void drawChannelValue(coord_t x, coord_t y, uint8_t ch, int16_t value, LcdFlags flags)
+{
+  int16_t valueToDisplay;
+  if (g_eeGeneral.ppmunit == PPM_US) {
+    valueToDisplay = PPM_CH_CENTER(ch) + value / 2;
+  } else if (g_eeGeneral.ppmunit == PPM_PERCENT_PREC1) {
+    flags |= PREC1;
+    valueToDisplay = calcRESXto1000(value);
+  } else {
+    valueToDisplay = calcRESXto1000(value) / 10;
+  }
+  lcdDrawNumber(x, y, valueToDisplay, flags);
+}
+
+const unsigned char SLEEP_BITMAP[]  = {
 #include "sleep.lbm"
 };
 
@@ -268,7 +299,10 @@ const pm_uchar SLEEP_BITMAP[] PROGMEM = {
 void drawSleepBitmap()
 {
   lcdClear();
+#if !defined(PCBI6X)
   lcdDraw1bitBitmap((LCD_W-SLEEP_BITMAP_WIDTH)/2, (LCD_H-SLEEP_BITMAP_HEIGHT)/2, SLEEP_BITMAP, 0);
+#else
+  lcdDrawText(LCD_W/2, LCD_H/2 - 4, "z z z", CENTERED);
+#endif
   lcdRefresh();
 }
-#endif

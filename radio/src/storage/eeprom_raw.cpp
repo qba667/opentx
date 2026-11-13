@@ -2,7 +2,7 @@
  * Copyright (C) OpenTX
  *
  * Based on code named
- *   th9x - http://code.google.com/p/th9x 
+ *   th9x - http://code.google.com/p/th9x
  *   er9x - http://code.google.com/p/er9x
  *   gruvin9x - http://code.google.com/p/gruvin9x
  *
@@ -24,84 +24,86 @@
 #include "opentx.h"
 #include "timers.h"
 
-#define EEPROM_MARK           0x84697771 /* thanks ;) */
-#define EEPROM_ZONE_SIZE      (8*1024)
-#define EEPROM_BUFFER_SIZE    256
-#define EEPROM_FAT_SIZE       128
-#define EEPROM_MAX_ZONES      (EEPROM_SIZE / EEPROM_ZONE_SIZE)
-#define EEPROM_MAX_FILES      (EEPROM_MAX_ZONES - 1)
-#define FIRST_FILE_AVAILABLE  (1+MAX_MODELS)
+#define EEPROM_MARK 0x84697771 /* thanks ;) */
+#define EEPROM_ZONE_SIZE (8 * 1024)
+#define EEPROM_BUFFER_SIZE 256
+#define EEPROM_FAT_SIZE 128
+#define EEPROM_MAX_ZONES (EEPROM_SIZE / EEPROM_ZONE_SIZE)
+#define EEPROM_MAX_FILES (EEPROM_MAX_ZONES - 1)
+#define FIRST_FILE_AVAILABLE (1 + MAX_MODELS)
 
 PACK(struct EepromHeaderFile
-{
-  uint8_t zoneIndex:7;
-  uint8_t exists:1;
-});
+     {
+       uint8_t zoneIndex : 7;
+       uint8_t exists : 1;
+     });
 
 PACK(struct EepromHeader
-{
-  uint32_t         mark;
-  uint32_t         index;
-  EepromHeaderFile files[EEPROM_MAX_FILES];
-});
+     {
+       uint32_t mark;
+       uint32_t index;
+       EepromHeaderFile files[EEPROM_MAX_FILES];
+     });
 
 PACK(struct EepromFileHeader
-{
-  uint16_t fileIndex;
-  uint16_t size;
-});
+     {
+       uint16_t fileIndex;
+       uint16_t size;
+     });
 
 EepromHeader eepromHeader __DMA;
 volatile EepromWriteState eepromWriteState = EEPROM_IDLE;
 uint8_t eepromWriteZoneIndex = FIRST_FILE_AVAILABLE;
 uint8_t eepromWriteFileIndex;
 uint16_t eepromWriteSize;
-uint8_t * eepromWriteSourceAddr;
+uint8_t *eepromWriteSourceAddr;
 uint32_t eepromWriteDestinationAddr;
 uint16_t eepromFatAddr = 0;
 uint8_t eepromWriteBuffer[EEPROM_BUFFER_SIZE] __DMA;
 
 void eepromWaitReadStatus()
 {
-  while (eepromReadStatus() == 0) {
-    SIMU_SLEEP(5/*ms*/);
+  while (!eepromReadStatus())
+  {
   }
 }
 
 void eepromWaitTransferComplete()
 {
-  while (!eepromIsTransferComplete()) {
-    SIMU_SLEEP(5/*ms*/);
+  while (!eepromIsTransferComplete())
+  {
   }
 }
 
-void eepromEraseBlock(uint32_t address, bool blocking=true)
+void eepromEraseBlock(uint32_t address, bool blocking = true)
 {
-  // TRACE("eepromEraseBlock(%d)", address);
+  TRACE("eepromEraseBlock(%d) blocking: %d", address, blocking);
 
   eepromBlockErase(address);
 
-  if (blocking) {
+  if (blocking)
+  {
     eepromWaitTransferComplete();
     eepromWaitReadStatus();
   }
 }
 
-void eepromRead(uint8_t * buffer, size_t address, size_t size)
+void eepromRead(uint8_t *buffer, size_t address, size_t size)
 {
-  // TRACE("eepromRead(%p, %d, %d)", buffer, address, size);
+  TRACE("eepromRead(addr: %d size: %d)", address, size);
 
   eepromStartRead(buffer, address, size);
   eepromWaitTransferComplete();
 }
 
-void eepromWrite(uint8_t * buffer, size_t address, size_t size, bool blocking=true)
+void eepromWrite(uint8_t *buffer, size_t address, size_t size, bool blocking = true)
 {
-  // TRACE("eepromWrite(%p, %d, %d)", buffer, address, size);
+  TRACE("eepromWrite(addr: %d size: %d)", address, size);
 
   eepromStartWrite(buffer, address, size);
 
-  if (blocking) {
+  if (blocking)
+  {
     eepromWaitTransferComplete();
     eepromWaitReadStatus();
   }
@@ -109,48 +111,59 @@ void eepromWrite(uint8_t * buffer, size_t address, size_t size, bool blocking=tr
 
 bool eepromOpen()
 {
-  TRACE("eepromOpen");
+  //TRACE("eepromOpen");
 
   int32_t bestFatAddr = -1;
   uint32_t bestFatIndex = 0;
   eepromFatAddr = 0;
-  while (eepromFatAddr < EEPROM_ZONE_SIZE) {
+  while (eepromFatAddr < EEPROM_ZONE_SIZE)
+  {
     eepromRead((uint8_t *)&eepromHeader, eepromFatAddr, sizeof(eepromHeader.mark) + sizeof(eepromHeader.index));
-    if (eepromHeader.mark == EEPROM_MARK && eepromHeader.index >= bestFatIndex) {
+
+    if (eepromHeader.mark == EEPROM_MARK && eepromHeader.index >= bestFatIndex)
+    {
       bestFatAddr = eepromFatAddr;
       bestFatIndex = eepromHeader.index;
     }
     eepromFatAddr += EEPROM_FAT_SIZE;
   }
-  if (bestFatAddr >= 0) {
+  if (bestFatAddr >= 0)
+  {
     eepromFatAddr = bestFatAddr;
     eepromRead((uint8_t *)&eepromHeader, eepromFatAddr, sizeof(eepromHeader));
     return true;
   }
-  else {
+  else
+  {
     return false;
   }
 }
 
-uint32_t readFile(int index, uint8_t * data, uint32_t size)
+uint32_t readFile(int index, uint8_t *data, uint32_t size)
 {
-  if (eepromHeader.files[index].exists) {
+  //TRACE("readFile");
+  if (eepromHeader.files[index].exists)
+  {
     EepromFileHeader header;
     uint32_t address = eepromHeader.files[index].zoneIndex * EEPROM_ZONE_SIZE;
     eepromRead((uint8_t *)&header, address, sizeof(header));
-    if (size < header.size) {
+    if (size < header.size)
+    {
       header.size = size;
     }
-    if (header.size > 0) {
+    if (header.size > 0)
+    {
       eepromRead(data, address + sizeof(header), header.size);
       size -= header.size;
     }
-    if (size > 0) {
+    if (size > 0)
+    {
       memset(data + header.size, 0, size);
     }
     return header.size;
   }
-  else {
+  else
+  {
     return 0;
   }
 }
@@ -159,13 +172,15 @@ void eepromIncFatAddr()
 {
   eepromHeader.index += 1;
   eepromFatAddr += EEPROM_FAT_SIZE;
-  if (eepromFatAddr >= EEPROM_ZONE_SIZE) {
+  if (eepromFatAddr >= EEPROM_ZONE_SIZE)
+  {
     eepromFatAddr = 0;
   }
 }
 
-void writeFile(int index, uint8_t * data, uint32_t size)
+void writeFile(int index, uint8_t *data, uint32_t size)
 {
+  //TRACE("writeFile");
   uint32_t zoneIndex = eepromHeader.files[eepromWriteZoneIndex].zoneIndex;
   eepromHeader.files[eepromWriteZoneIndex].exists = 0;
   eepromHeader.files[eepromWriteZoneIndex].zoneIndex = eepromHeader.files[index].zoneIndex;
@@ -177,7 +192,8 @@ void writeFile(int index, uint8_t * data, uint32_t size)
   eepromWriteDestinationAddr = zoneIndex * EEPROM_ZONE_SIZE;
   eepromWriteState = EEPROM_START_WRITE;
   eepromWriteZoneIndex += 1;
-  if (eepromWriteZoneIndex >= EEPROM_MAX_FILES) {
+  if (eepromWriteZoneIndex >= EEPROM_MAX_FILES)
+  {
     eepromWriteZoneIndex = FIRST_FILE_AVAILABLE;
   }
   eepromIncFatAddr();
@@ -187,7 +203,7 @@ void eeDeleteModel(uint8_t index)
 {
   storageCheck(true);
   memclear(&modelHeaders[index], sizeof(ModelHeader));
-  writeFile(index+1, (uint8_t *)&g_model, 0);
+  writeFile(index + 1, (uint8_t *)&g_model, 0);
   eepromWriteWait();
 }
 
@@ -195,21 +211,22 @@ bool eeCopyModel(uint8_t dst, uint8_t src)
 {
   storageCheck(true);
 
-  uint32_t eepromWriteSourceAddr = eepromHeader.files[src+1].zoneIndex * EEPROM_ZONE_SIZE;
-  uint32_t eepromWriteDestinationAddr = eepromHeader.files[dst+1].zoneIndex * EEPROM_ZONE_SIZE;
+  uint32_t eepromWriteSourceAddr = eepromHeader.files[src + 1].zoneIndex * EEPROM_ZONE_SIZE;
+  uint32_t eepromWriteDestinationAddr = eepromHeader.files[dst + 1].zoneIndex * EEPROM_ZONE_SIZE;
 
   // erase blocks
   eepromEraseBlock(eepromWriteDestinationAddr);
-  eepromEraseBlock(eepromWriteDestinationAddr+EEPROM_BLOCK_SIZE);
+  eepromEraseBlock(eepromWriteDestinationAddr + EEPROM_BLOCK_SIZE);
 
   // write model
-  for (int pos=0; pos<EEPROM_ZONE_SIZE; pos+=EEPROM_BUFFER_SIZE) {
-    eepromRead(eepromWriteBuffer, eepromWriteSourceAddr+pos, EEPROM_BUFFER_SIZE);
-    eepromWrite(eepromWriteBuffer, eepromWriteDestinationAddr+pos, EEPROM_BUFFER_SIZE);
+  for (int pos = 0; pos < EEPROM_ZONE_SIZE; pos += EEPROM_BUFFER_SIZE)
+  {
+    eepromRead(eepromWriteBuffer, eepromWriteSourceAddr + pos, EEPROM_BUFFER_SIZE);
+    eepromWrite(eepromWriteBuffer, eepromWriteDestinationAddr + pos, EEPROM_BUFFER_SIZE);
   }
 
   // write FAT
-  eepromHeader.files[dst+1].exists = 1;
+  eepromHeader.files[dst + 1].exists = 1;
   eepromIncFatAddr();
   eepromWriteState = EEPROM_WRITE_NEW_FAT;
   eepromWriteWait();
@@ -223,9 +240,9 @@ void eeSwapModels(uint8_t id1, uint8_t id2)
 {
   storageCheck(true);
   {
-    EepromHeaderFile tmp = eepromHeader.files[id1+1];
-    eepromHeader.files[id1+1] = eepromHeader.files[id2+1];
-    eepromHeader.files[id2+1] = tmp;
+    EepromHeaderFile tmp = eepromHeader.files[id1 + 1];
+    eepromHeader.files[id1 + 1] = eepromHeader.files[id2 + 1];
+    eepromHeader.files[id2 + 1] = tmp;
   }
   eepromIncFatAddr();
   eepromWriteState = EEPROM_WRITE_NEW_FAT;
@@ -240,13 +257,14 @@ void eeSwapModels(uint8_t id1, uint8_t id2)
 
 // For conversions ...
 uint16_t eeLoadGeneralSettingsData()
-{
+{  
   return readFile(0, (uint8_t *)&g_eeGeneral, sizeof(g_eeGeneral));
 }
 
 uint16_t eeLoadModelData(uint8_t index)
 {
-  return readFile(index+1, (uint8_t *)&g_model, sizeof(g_model));
+  TRACE("eeLoadModelData");
+  return readFile(index + 1, (uint8_t *)&g_model, sizeof(g_model));
 }
 
 void writeGeneralSettings()
@@ -256,75 +274,81 @@ void writeGeneralSettings()
 
 void writeModel(int index)
 {
-  writeFile(index+1, (uint8_t *)&g_model, sizeof(g_model));
+  writeFile(index + 1, (uint8_t *)&g_model, sizeof(g_model));
 }
 
 bool eeLoadGeneral()
 {
   eeLoadGeneralSettingsData();
+  
+  TRACE("eeLoadGeneralSettingsData size %d", sizeof(g_eeGeneral));
+  DUMP((uint8_t *)&g_eeGeneral, sizeof(g_eeGeneral));
 
-  if (g_eeGeneral.version != EEPROM_VER) {
+  if (g_eeGeneral.version != EEPROM_VER)
+  {
     TRACE("EEPROM version %d instead of %d", g_eeGeneral.version, EEPROM_VER);
-#if defined(PCBSKY9X)
-    if (!eeConvert()) {
-      return false;
-    }
-#else
     return false;
-#endif
   }
   return true;
 }
 
 bool eeModelExists(uint8_t id)
 {
-  return (eepromHeader.files[id+1].exists);
+  return (eepromHeader.files[id + 1].exists);
 }
 
-void eeLoadModelHeader(uint8_t id, ModelHeader * header)
+void eeLoadModelHeader(uint8_t id, ModelHeader *header)
 {
-  readFile(id+1, (uint8_t *)header, sizeof(ModelHeader));
+  readFile(id + 1, (uint8_t *)header, sizeof(ModelHeader));
 }
 
 void storageFormat()
 {
+  TRACE("storageFormat");
   eepromFatAddr = 0;
   eepromHeader.mark = EEPROM_MARK;
   eepromHeader.index = 0;
-  for (int i=0; i<EEPROM_MAX_FILES; i++) {
+  for (int i = 0; i < EEPROM_MAX_FILES; i++)
+  {
     eepromHeader.files[i].exists = 0;
-    eepromHeader.files[i].zoneIndex = i+1;
+    eepromHeader.files[i].zoneIndex = i + 1;
   }
   eepromEraseBlock(0);
   eepromEraseBlock(EEPROM_BLOCK_SIZE);
   eepromWrite((uint8_t *)&eepromHeader, 0, sizeof(eepromHeader));
 }
 
-void eepromWriteWait(EepromWriteState state/* = EEPROM_IDLE*/)
+void eepromWriteWait(EepromWriteState state /* = EEPROM_IDLE*/)
 {
-  while (eepromWriteState != state) {
+  while (eepromWriteState != state)
+  {
 #if defined(STM32)
     // Waits a little bit for CS transitions
-    CoTickDelay(1/*2ms*/);
+    sleep_ms(2);
 #endif
     eepromWriteProcess();
 #ifdef SIMU
-    sleep(5/*ms*/);
+    sleep(5 /*ms*/);
 #endif
   }
 }
 
 void storageCheck(bool immediately)
 {
-  if (immediately) {
+  if (immediately)
+  {
     eepromWriteWait();
   }
 
   assert(eepromWriteState == EEPROM_IDLE);
 
-  if (storageDirtyMsk & EE_GENERAL) {
-    TRACE("eeprom write general");
+  if (storageDirtyMsk & EE_GENERAL)
+  {
+    TRACE("eeprom write general.", g_eeGeneral);
+    DUMP((uint8_t *)&g_eeGeneral, sizeof(g_eeGeneral));
+
     storageDirtyMsk -= EE_GENERAL;
+
     writeGeneralSettings();
     if (immediately)
       eepromWriteWait();
@@ -332,8 +356,9 @@ void storageCheck(bool immediately)
       return;
   }
 
-  if (storageDirtyMsk & EE_MODEL) {
-    TRACE("eeprom write model");
+  if (storageDirtyMsk & EE_MODEL)
+  {
+    TRACE("eeprom write model %d bytes", sizeof(g_model));
     storageDirtyMsk -= EE_MODEL;
     writeModel(g_eeGeneral.currModel);
     if (immediately)
@@ -343,85 +368,90 @@ void storageCheck(bool immediately)
 
 void eepromWriteProcess()
 {
-  // TRACE("eepromWriteProcess(state=%d)", eepromWriteState);
+  //TRACE("eepromWriteProcess(state=%d)", eepromWriteState);
 
-  switch (eepromWriteState) {
-    case EEPROM_ERASING_FILE_BLOCK1:
-    case EEPROM_ERASING_FILE_BLOCK2:
-    case EEPROM_WRITING_BUFFER:
-    case EEPROM_ERASING_FAT_BLOCK:
-    case EEPROM_WRITING_NEW_FAT:
-      if (eepromIsTransferComplete()) {
-        eepromWriteState = EepromWriteState(eepromWriteState + 1);
-      }
-      break;
-
-    case EEPROM_ERASING_FILE_BLOCK1_WAIT:
-    case EEPROM_ERASING_FILE_BLOCK2_WAIT:
-    case EEPROM_WRITING_BUFFER_WAIT:
-    case EEPROM_ERASING_FAT_BLOCK_WAIT:
-    case EEPROM_WRITING_NEW_FAT_WAIT:
-      if (eepromReadStatus()) {
-        eepromWriteState = EepromWriteState(eepromWriteState + 1);
-      }
-      break;
-
-    case EEPROM_START_WRITE:
-      eepromWriteState = EEPROM_ERASING_FILE_BLOCK1;
-      eepromEraseBlock(eepromWriteDestinationAddr, false);
-      break;
-
-    case EEPROM_ERASE_FILE_BLOCK2:
-      eepromWriteState = EEPROM_ERASING_FILE_BLOCK2;
-      eepromEraseBlock(eepromWriteDestinationAddr + EEPROM_BLOCK_SIZE, false);
-      break;
-
-    case EEPROM_WRITE_BUFFER:
+  switch (eepromWriteState)
+  {
+  case EEPROM_ERASING_FILE_BLOCK1:
+  case EEPROM_ERASING_FILE_BLOCK2:
+  case EEPROM_WRITING_BUFFER:
+  case EEPROM_ERASING_FAT_BLOCK:
+  case EEPROM_WRITING_NEW_FAT:
+    if (eepromIsTransferComplete())
     {
-      EepromFileHeader * header = (EepromFileHeader *)eepromWriteBuffer;
-      header->fileIndex = eepromWriteFileIndex;
-      header->size = eepromWriteSize;
-      uint32_t size = min<uint32_t>(EEPROM_BUFFER_SIZE-sizeof(EepromFileHeader), eepromWriteSize);
-      memcpy(eepromWriteBuffer+sizeof(EepromFileHeader), eepromWriteSourceAddr, size);
+      eepromWriteState = EepromWriteState(eepromWriteState + 1);
+    }
+    break;
+
+  case EEPROM_ERASING_FILE_BLOCK1_WAIT:
+  case EEPROM_ERASING_FILE_BLOCK2_WAIT:
+  case EEPROM_WRITING_BUFFER_WAIT:
+  case EEPROM_ERASING_FAT_BLOCK_WAIT:
+  case EEPROM_WRITING_NEW_FAT_WAIT:
+    if (eepromReadStatus())
+    {
+      eepromWriteState = EepromWriteState(eepromWriteState + 1);
+    }
+    break;
+
+  case EEPROM_START_WRITE:
+    eepromWriteState = EEPROM_ERASING_FILE_BLOCK1;
+    eepromEraseBlock(eepromWriteDestinationAddr, false);
+    break;
+
+  case EEPROM_ERASE_FILE_BLOCK2:
+    eepromWriteState = EEPROM_ERASING_FILE_BLOCK2;
+    eepromEraseBlock(eepromWriteDestinationAddr + EEPROM_BLOCK_SIZE, false);
+    break;
+
+  case EEPROM_WRITE_BUFFER:
+  {
+    EepromFileHeader *header = (EepromFileHeader *)eepromWriteBuffer;
+    header->fileIndex = eepromWriteFileIndex;
+    header->size = eepromWriteSize;
+    uint32_t size = min<uint32_t>(EEPROM_BUFFER_SIZE - sizeof(EepromFileHeader), eepromWriteSize);
+    memcpy(eepromWriteBuffer + sizeof(EepromFileHeader), eepromWriteSourceAddr, size);
+    eepromWriteState = EEPROM_WRITING_BUFFER;
+    eepromWrite(eepromWriteBuffer, eepromWriteDestinationAddr, sizeof(EepromFileHeader) + size, false);
+    eepromWriteSourceAddr += size;
+    eepromWriteDestinationAddr += sizeof(EepromFileHeader) + size;
+    eepromWriteSize -= size;
+    break;
+  }
+
+  case EEPROM_WRITE_NEXT_BUFFER:
+  {
+    uint32_t size = min<uint32_t>(EEPROM_BUFFER_SIZE, eepromWriteSize);
+    if (size > 0)
+    {
+      memcpy(eepromWriteBuffer, eepromWriteSourceAddr, size);
       eepromWriteState = EEPROM_WRITING_BUFFER;
-      eepromWrite(eepromWriteBuffer, eepromWriteDestinationAddr, sizeof(EepromFileHeader)+size, false);
+      eepromWrite(eepromWriteBuffer, eepromWriteDestinationAddr, size, false);
       eepromWriteSourceAddr += size;
-      eepromWriteDestinationAddr += sizeof(EepromFileHeader)+size;
+      eepromWriteDestinationAddr += size;
       eepromWriteSize -= size;
       break;
     }
-
-    case EEPROM_WRITE_NEXT_BUFFER:
+    else if (eepromFatAddr == 0 || eepromFatAddr == EEPROM_BLOCK_SIZE)
     {
-      uint32_t size = min<uint32_t>(EEPROM_BUFFER_SIZE, eepromWriteSize);
-      if (size > 0) {
-        memcpy(eepromWriteBuffer, eepromWriteSourceAddr, size);
-        eepromWriteState = EEPROM_WRITING_BUFFER;
-        eepromWrite(eepromWriteBuffer, eepromWriteDestinationAddr, size, false);
-        eepromWriteSourceAddr += size;
-        eepromWriteDestinationAddr += size;
-        eepromWriteSize -= size;
-        break;
-      }
-      else if (eepromFatAddr == 0 || eepromFatAddr == EEPROM_BLOCK_SIZE) {
-        eepromWriteState = EEPROM_ERASING_FAT_BLOCK;
-        eepromEraseBlock(eepromFatAddr, false);
-        break;
-      }
+      eepromWriteState = EEPROM_ERASING_FAT_BLOCK;
+      eepromEraseBlock(eepromFatAddr, false);
+      break;
     }
+  }
     /* no break */
 
-    case EEPROM_WRITE_NEW_FAT:
-      eepromWriteState = EEPROM_WRITING_NEW_FAT;
-      eepromWrite((uint8_t *)&eepromHeader, eepromFatAddr, sizeof(eepromHeader), false);
-      break;
+  case EEPROM_WRITE_NEW_FAT:
+    eepromWriteState = EEPROM_WRITING_NEW_FAT;
+    eepromWrite((uint8_t *)&eepromHeader, eepromFatAddr, sizeof(eepromHeader), false);
+    break;
 
-    case EEPROM_END_WRITE:
-      eepromWriteState = EEPROM_IDLE;
-      break;
+  case EEPROM_END_WRITE:
+    eepromWriteState = EEPROM_IDLE;
+    break;
 
-    default:
-      break;
+  default:
+    break;
   }
 }
 
@@ -429,8 +459,9 @@ uint16_t eeModelSize(uint8_t index)
 {
   uint16_t result = 0;
 
-  if (eepromHeader.files[index+1].exists) {
-    uint32_t address = eepromHeader.files[index+1].zoneIndex * EEPROM_ZONE_SIZE;
+  if (eepromHeader.files[index + 1].exists)
+  {
+    uint32_t address = eepromHeader.files[index + 1].zoneIndex * EEPROM_ZONE_SIZE;
     EepromFileHeader header;
     eepromRead((uint8_t *)&header, address, sizeof(header));
     result = header.size;
@@ -440,57 +471,58 @@ uint16_t eeModelSize(uint8_t index)
 }
 
 #if defined(SDCARD)
-const pm_char * eeBackupModel(uint8_t i_fileSrc)
+const char *eeBackupModel(uint8_t i_fileSrc)
 {
-  char * buf = reusableBuffer.modelsel.mainname;
+  char *buf = reusableBuffer.modelsel.mainname;
   FIL archiveFile;
   UINT written;
 
   storageCheck(true);
 
-  if (!sdMounted()) {
+  if (!sdMounted())
+  {
     return STR_NO_SDCARD;
   }
 
   // check and create folder here
   strcpy(buf, STR_MODELS_PATH);
-  const char * error = sdCheckAndCreateDirectory(buf);
-  if (error) {
+  const char *error = sdCheckAndCreateDirectory(buf);
+  if (error)
+  {
     return error;
   }
 
-  buf[sizeof(MODELS_PATH)-1] = '/';
+  buf[sizeof(MODELS_PATH) - 1] = '/';
   strcpy(strcat_modelname(&buf[sizeof(MODELS_PATH)], i_fileSrc), STR_MODELS_EXT);
 
   FRESULT result = f_open(&archiveFile, buf, FA_CREATE_ALWAYS | FA_WRITE);
-  if (result != FR_OK) {
+  if (result != FR_OK)
+  {
     return SDCARD_ERROR(result);
   }
 
-#if defined(PCBSKY9X)
-  strcpy(statusLineMsg, PSTR("File "));
-  strcpy(statusLineMsg+5, &buf[sizeof(MODELS_PATH)]);
-#endif
-
   uint16_t size = eeModelSize(i_fileSrc);
 
-  *(uint32_t*)&buf[0] = OTX_FOURCC;
+  *(uint32_t *)&buf[0] = OTX_FOURCC;
   buf[4] = g_eeGeneral.version;
   buf[5] = 'M';
-  *(uint16_t*)&buf[6] = size;
+  *(uint16_t *)&buf[6] = size;
 
   result = f_write(&archiveFile, buf, 8, &written);
-  if (result != FR_OK || written != 8) {
+  if (result != FR_OK || written != 8)
+  {
     f_close(&archiveFile);
     return SDCARD_ERROR(result);
   }
 
-  uint32_t address = eepromHeader.files[i_fileSrc+1].zoneIndex * EEPROM_ZONE_SIZE + sizeof(EepromFileHeader);
-  while (size > 0) {
+  uint32_t address = eepromHeader.files[i_fileSrc + 1].zoneIndex * EEPROM_ZONE_SIZE + sizeof(EepromFileHeader);
+  while (size > 0)
+  {
     uint16_t blockSize = min<uint16_t>(size, EEPROM_BUFFER_SIZE);
     eepromRead(eepromWriteBuffer, address, blockSize);
     result = f_write(&archiveFile, eepromWriteBuffer, blockSize, &written);
-    if (result != FR_OK || written != blockSize) {
+    if (result != FR_OK || written != blockSize)
+    {
       f_close(&archiveFile);
       return SDCARD_ERROR(result);
     }
@@ -500,86 +532,90 @@ const pm_char * eeBackupModel(uint8_t i_fileSrc)
 
   f_close(&archiveFile);
 
-#if defined(PCBSKY9X)
-  showStatusLine();
-#endif
-
   return NULL;
 }
 
-const pm_char * eeRestoreModel(uint8_t i_fileDst, char *model_name)
+const char *eeRestoreModel(uint8_t i_fileDst, char *model_name)
 {
-  char * buf = reusableBuffer.modelsel.mainname;
+  char *buf = reusableBuffer.modelsel.mainname;
   FIL restoreFile;
   UINT read;
 
   storageCheck(true);
 
-  if (!sdMounted()) {
+  if (!sdMounted())
+  {
     return STR_NO_SDCARD;
   }
 
   strcpy(buf, STR_MODELS_PATH);
-  buf[sizeof(MODELS_PATH)-1] = '/';
+  buf[sizeof(MODELS_PATH) - 1] = '/';
   strcpy(&buf[sizeof(MODELS_PATH)], model_name);
   strcpy(&buf[strlen(buf)], STR_MODELS_EXT);
 
   FRESULT result = f_open(&restoreFile, buf, FA_OPEN_EXISTING | FA_READ);
-  if (result != FR_OK) {
+  if (result != FR_OK)
+  {
     return SDCARD_ERROR(result);
   }
 
-  if (f_size(&restoreFile) < 8) {
+  if (f_size(&restoreFile) < 8)
+  {
     f_close(&restoreFile);
     return STR_INCOMPATIBLE;
   }
 
   result = f_read(&restoreFile, (uint8_t *)buf, 8, &read);
-  if (result != FR_OK || read != 8) {
+  if (result != FR_OK || read != 8)
+  {
     f_close(&restoreFile);
     return SDCARD_ERROR(result);
   }
 
   uint8_t version = (uint8_t)buf[4];
-  if ((*(uint32_t*)&buf[0] != OTX_FOURCC && *(uint32_t*)&buf[0] != O9X_FOURCC) || version < FIRST_CONV_EEPROM_VER || version > EEPROM_VER || buf[5] != 'M') {
+  if ((*(uint32_t *)&buf[0] != OTX_FOURCC && *(uint32_t *)&buf[0] != O9X_FOURCC) || version < FIRST_CONV_EEPROM_VER || version > EEPROM_VER || buf[5] != 'M')
+  {
     f_close(&restoreFile);
     return STR_INCOMPATIBLE;
   }
 
-  if (eeModelExists(i_fileDst)) {
+  if (eeModelExists(i_fileDst))
+  {
     eeDeleteModel(i_fileDst);
   }
 
-  uint16_t size = min<uint16_t>(sizeof(g_model), *(uint16_t*)&buf[6]);
-  uint32_t address = eepromHeader.files[i_fileDst+1].zoneIndex * EEPROM_ZONE_SIZE;
+  uint16_t size = min<uint16_t>(sizeof(g_model), *(uint16_t *)&buf[6]);
+  uint32_t address = eepromHeader.files[i_fileDst + 1].zoneIndex * EEPROM_ZONE_SIZE;
 
   // erase blocks
   eepromEraseBlock(address);
-  eepromEraseBlock(address+EEPROM_BLOCK_SIZE);
+  eepromEraseBlock(address + EEPROM_BLOCK_SIZE);
 
   // write header
-  EepromFileHeader * header = (EepromFileHeader *)eepromWriteBuffer;
-  header->fileIndex = i_fileDst+1;
+  EepromFileHeader *header = (EepromFileHeader *)eepromWriteBuffer;
+  header->fileIndex = i_fileDst + 1;
   header->size = size;
 
   int offset = 4;
 
   // write model
-  do {
-    uint16_t blockSize = min<uint16_t>(size, EEPROM_BUFFER_SIZE-offset);
-    result = f_read(&restoreFile, eepromWriteBuffer+offset, blockSize, &read);
-    if (result != FR_OK || read != blockSize) {
+  do
+  {
+    uint16_t blockSize = min<uint16_t>(size, EEPROM_BUFFER_SIZE - offset);
+    result = f_read(&restoreFile, eepromWriteBuffer + offset, blockSize, &read);
+    if (result != FR_OK || read != blockSize)
+    {
       f_close(&g_oLogFile);
       return SDCARD_ERROR(result);
     }
-    eepromWrite(eepromWriteBuffer, address, blockSize+offset);
+    eepromWrite(eepromWriteBuffer, address, blockSize + offset);
     size -= blockSize;
     address += EEPROM_BUFFER_SIZE;
     offset = 0;
   } while (size > 0);
 
   // write FAT
-  eepromHeader.files[i_fileDst+1].exists = 1;
+  eepromHeader.files[i_fileDst + 1].exists = 1;
   eepromIncFatAddr();
   eepromWriteState = EEPROM_WRITE_NEW_FAT;
   eepromWriteWait();
@@ -587,7 +623,8 @@ const pm_char * eeRestoreModel(uint8_t i_fileDst, char *model_name)
   eeLoadModelHeader(i_fileDst, &modelHeaders[i_fileDst]);
 
 #if defined(EEPROM_CONVERSIONS)
-  if (version < EEPROM_VER) {
+  if (version < EEPROM_VER)
+  {
     ConvertModel(i_fileDst, version);
     eeLoadModel(g_eeGeneral.currModel);
   }
@@ -595,4 +632,5 @@ const pm_char * eeRestoreModel(uint8_t i_fileDst, char *model_name)
 
   return NULL;
 }
+
 #endif

@@ -156,7 +156,7 @@ CommandLineParseResult cliOptions(SimulatorOptions * simOptions, int * profileId
   }
 
   if (cliOptions.isSet(optVer)) {
-    showMessage(APP_SIMULATOR " v" VERSION " " __DATE__, QMessageBox::Information);
+    showMessage(APP_SIMULATOR % " v" VERSION " " __DATE__, QMessageBox::Information);
     return CommandLineExitOk;
   }
 
@@ -337,8 +337,14 @@ int main(int argc, char *argv[])
   g.sessionId(profileId);
   g.simuLastProfId(profileId);
 
-  // Set global firmware environment
-  Firmware::setCurrentVariant(Firmware::getFirmwareForId(simOptions.firmwareId));
+  // Set global firmware environment. A simulated radio without a Companion firmware definition
+  // (e.g. opentx-i6x) would get the default variant (X9D+, wrong LCD format and UI): use the
+  // profile's radio for the UI instead.
+  Firmware * firmware = Firmware::getFirmwareForId(simOptions.firmwareId);
+  if (firmware->getFirmwareBase()->getId() != simOptions.firmwareId && !g.profile[profileId].fwType().isEmpty())
+    firmware = Firmware::getFirmwareForId(g.profile[profileId].fwType());
+  qDebug() << "Simulator UI firmware:" << firmware->getId() << "for radio" << simOptions.firmwareId;
+  Firmware::setCurrentVariant(firmware);
 
   int result = 0;
   SimulatorMainWindow * mainWindow = new SimulatorMainWindow(NULL, simOptions.firmwareId, SIMULATOR_FLAGS_STANDALONE);

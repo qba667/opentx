@@ -39,78 +39,16 @@ void watchdogInit(unsigned int duration)
   IWDG->KR = 0xCCCC;      // start
 }
 
-// Starts TIMER at 2MHz
-void init2MhzTimer()
-{
-  TIMER_2MHz_TIMER->PSC = (PERI1_FREQUENCY * TIMER_MULT_APB1) / 2000000 - 1 ;       // 0.5 uS, 2 MHz
-  TIMER_2MHz_TIMER->ARR = 65535;
-  TIMER_2MHz_TIMER->CR2 = 0;
-  TIMER_2MHz_TIMER->CR1 = TIM_CR1_CEN;
-}
-
-// Starts TIMER at 200Hz (5ms)
-void init5msTimer()
-{
-  INTERRUPT_xMS_TIMER->ARR = 4999 ; // 5mS in uS
-  INTERRUPT_xMS_TIMER->PSC = (PERI1_FREQUENCY * TIMER_MULT_APB1) / 1000000 - 1 ; // 1uS
-  INTERRUPT_xMS_TIMER->CCER = 0 ;
-  INTERRUPT_xMS_TIMER->CCMR1 = 0 ;
-  INTERRUPT_xMS_TIMER->EGR = 0 ;
-  INTERRUPT_xMS_TIMER->CR1 = 5 ;
-  INTERRUPT_xMS_TIMER->DIER |= 1 ;
-  NVIC_EnableIRQ(INTERRUPT_xMS_IRQn) ;
-  NVIC_SetPriority(INTERRUPT_xMS_IRQn, 7);
-}
-
-void stop5msTimer( void )
-{
-  INTERRUPT_xMS_TIMER->CR1 = 0 ;        // stop timer
-  NVIC_DisableIRQ(INTERRUPT_xMS_IRQn) ;
-}
-
-// TODO use the same than board_sky9x.cpp
-void interrupt5ms()
-{
-  static uint32_t pre_scale ;       // Used to get 10 Hz counter
-
-  AUDIO_HEARTBEAT();
-
-#if defined(HAPTIC)
-  HAPTIC_HEARTBEAT();
-#endif
-
-  if (++pre_scale >= 2) {
-    pre_scale = 0 ;
-    DEBUG_TIMER_START(debugTimerPer10ms);
-    DEBUG_TIMER_SAMPLE(debugTimerPer10msPeriod);
-    per10ms();
-    DEBUG_TIMER_STOP(debugTimerPer10ms);
-  }
-
-#if defined(ROTARY_ENCODER_NAVIGATION)
-  checkRotaryEncoder();
-#endif
-}
-
-#if !defined(SIMU)
-extern "C" void INTERRUPT_xMS_IRQHandler()
-{
-  INTERRUPT_xMS_TIMER->SR &= ~TIM_SR_UIF ;
-  interrupt5ms() ;
-  DEBUG_INTERRUPT(INT_5MS);
-}
-#endif
-
-#if defined(PWR_PRESS_BUTTON) && !defined(SIMU)
+#if defined(PWR_BUTTON_PRESS) && !defined(SIMU)
   #define PWR_PRESS_DURATION_MIN        100 // 1s
   #define PWR_PRESS_DURATION_MAX        500 // 5s
 #endif
 
 #if (defined(PCBX9E) && !defined(SIMU))
-const pm_uchar bmp_startup[] PROGMEM = {
+const unsigned char bmp_startup[]  = {
   #include "startup.lbm"
 };
-const pm_uchar bmp_lock[] PROGMEM = {
+const unsigned char bmp_lock[]  = {
   #include "lock.lbm"
 };
 #endif
@@ -129,18 +67,12 @@ void sportUpdateInit()
 
 void sportUpdatePowerOn()
 {
-  if (HAS_SPORT_UPDATE_CONNECTOR())
-    GPIO_SetBits(SPORT_UPDATE_PWR_GPIO, SPORT_UPDATE_PWR_GPIO_PIN);
-  else
-    EXTERNAL_MODULE_ON();
+  GPIO_SPORT_UPDATE_PWR_GPIO_ON(SPORT_UPDATE_PWR_GPIO, SPORT_UPDATE_PWR_GPIO_PIN);
 }
 
 void sportUpdatePowerOff()
 {
-  if (HAS_SPORT_UPDATE_CONNECTOR())
-    GPIO_ResetBits(SPORT_UPDATE_PWR_GPIO, SPORT_UPDATE_PWR_GPIO_PIN);
-  else
-    EXTERNAL_MODULE_OFF();
+  GPIO_SPORT_UPDATE_PWR_GPIO_OFF(SPORT_UPDATE_PWR_GPIO, SPORT_UPDATE_PWR_GPIO_PIN);
 }
 #endif
 
@@ -154,14 +86,14 @@ void boardInit()
                          SD_RCC_AHB1Periph | HAPTIC_RCC_AHB1Periph |
                          INTMODULE_RCC_AHB1Periph | EXTMODULE_RCC_AHB1Periph |
                          TELEMETRY_RCC_AHB1Periph | SPORT_UPDATE_RCC_AHB1Periph |
-                         SERIAL_RCC_AHB1Periph | TRAINER_RCC_AHB1Periph |
+                         AUX_SERIAL_RCC_AHB1Periph | TRAINER_RCC_AHB1Periph |
                          HEARTBEAT_RCC_AHB1Periph | BT_RCC_AHB1Periph, ENABLE);
 
   RCC_APB1PeriphClockCmd(LCD_RCC_APB1Periph | AUDIO_RCC_APB1Periph | ADC_RCC_APB1Periph |
                          BACKLIGHT_RCC_APB1Periph | HAPTIC_RCC_APB1Periph | INTERRUPT_xMS_RCC_APB1Periph |
                          TIMER_2MHz_RCC_APB1Periph | I2C_RCC_APB1Periph |
                          SD_RCC_APB1Periph | TRAINER_RCC_APB1Periph |
-                         TELEMETRY_RCC_APB1Periph | SERIAL_RCC_APB1Periph |
+                         TELEMETRY_RCC_APB1Periph | AUX_SERIAL_RCC_APB1Periph |
                          INTMODULE_RCC_APB1Periph | BT_RCC_APB1Periph, ENABLE);
 
   RCC_APB2PeriphClockCmd(BACKLIGHT_RCC_APB2Periph | ADC_RCC_APB2Periph |
@@ -180,8 +112,17 @@ void boardInit()
 #endif
 
   keysInit();
-  adcInit();
   delaysInit();
+
+#if NUM_PWMSTICKS > 0
+  sticksPwmInit();
+  delay_ms(20);
+  if (pwm_interrupt_count < 32) {
+    sticks_pwm_disabled = true;
+  }
+#endif
+
+  adcInit();
   lcdInit(); // delaysInit() must be called before
   audioInit();
   init2MhzTimer();
@@ -190,8 +131,8 @@ void boardInit()
   i2cInit();
   usbInit();
 
-#if defined(DEBUG) && defined(SERIAL_GPIO)
-  serial2Init(0, 0); // default serial mode (None if DEBUG not defined)
+#if defined(DEBUG) && defined(AUX_SERIAL_GPIO)
+  auxSerialInit(0, 0); // default serial mode (None if DEBUG not defined)
   TRACE("\nTaranis board started :)");
 #endif
 
@@ -207,7 +148,7 @@ void boardInit()
   DBGMCU_APB1PeriphConfig(DBGMCU_IWDG_STOP|DBGMCU_TIM1_STOP|DBGMCU_TIM2_STOP|DBGMCU_TIM3_STOP|DBGMCU_TIM6_STOP|DBGMCU_TIM8_STOP|DBGMCU_TIM10_STOP|DBGMCU_TIM13_STOP|DBGMCU_TIM14_STOP, ENABLE);
 #endif
 
-#if defined(PWR_PRESS_BUTTON)
+#if defined(PWR_BUTTON_PRESS)
   if (!WAS_RESET_BY_WATCHDOG_OR_SOFTWARE()) {
     lcdClear();
 #if defined(PCBX9E)
@@ -262,7 +203,7 @@ void boardInit()
 #if defined(TOPLCD_GPIO)
   toplcdInit();
 #endif
-#else // defined(PWR_PRESS_BUTTON)
+#else // defined(PWR_BUTTON_PRESS)
   backlightInit();
 #endif
 
@@ -284,67 +225,15 @@ void boardOff()
   toplcdOff();
 #endif
 
-#if defined(PWR_PRESS_BUTTON)
+#if defined(PWR_BUTTON_PRESS)
   while (pwrPressed()) {
-    wdt_reset();
+    WDG_RESET();
   }
 #endif
 
   lcdOff();
   SysTick->CTRL = 0; // turn off systick
   pwrOff();
-}
-
-uint8_t currentTrainerMode = 0xff;
-
-void checkTrainerSettings()
-{
-  uint8_t requiredTrainerMode = g_model.trainerMode;
-  if (requiredTrainerMode != currentTrainerMode) {
-    switch (currentTrainerMode) {
-      case TRAINER_MODE_MASTER_TRAINER_JACK:
-        stop_trainer_capture();
-        break;
-      case TRAINER_MODE_SLAVE:
-        stop_trainer_ppm();
-        break;
-      case TRAINER_MODE_MASTER_CPPM_EXTERNAL_MODULE:
-        stop_cppm_on_heartbeat_capture() ;
-        break;
-      case TRAINER_MODE_MASTER_SBUS_EXTERNAL_MODULE:
-        stop_sbus_on_heartbeat_capture() ;
-        break;
-#if defined(TRAINER_BATTERY_COMPARTMENT)
-      case TRAINER_MODE_MASTER_BATTERY_COMPARTMENT:
-        serial2Stop();
-#endif
-    }
-
-    currentTrainerMode = requiredTrainerMode;
-    switch (requiredTrainerMode) {
-      case TRAINER_MODE_SLAVE:
-        init_trainer_ppm();
-        break;
-      case TRAINER_MODE_MASTER_CPPM_EXTERNAL_MODULE:
-         init_cppm_on_heartbeat_capture();
-         break;
-      case TRAINER_MODE_MASTER_SBUS_EXTERNAL_MODULE:
-         init_sbus_on_heartbeat_capture();
-         break;
-#if defined(TRAINER_BATTERY_COMPARTMENT)
-      case TRAINER_MODE_MASTER_BATTERY_COMPARTMENT:
-        if (g_eeGeneral.serial2Mode == UART_MODE_SBUS_TRAINER) {
-          serial2SbusInit();
-          break;
-        }
-        // no break
-#endif
-      default:
-        // master is default
-        init_trainer_capture();
-        break;
-    }
-  }
 }
 
 uint16_t getBatteryVoltage()

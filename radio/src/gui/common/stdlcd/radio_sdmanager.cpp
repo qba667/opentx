@@ -64,7 +64,7 @@ inline bool isFilenameLower(bool isfile, const char * fn, const char * line)
 void getSelectionFullPath(char * lfn)
 {
   f_getcwd(lfn, _MAX_LFN);
-  strcat(lfn, PSTR("/"));
+  strcat(lfn, "/");
   strcat(lfn, reusableBuffer.sdmanager.lines[menuVerticalPosition - HEADER_LINE - menuVerticalOffset]);
 }
 
@@ -83,7 +83,6 @@ void onSdManagerMenu(const char * result)
   else if (result == STR_SD_FORMAT) {
     POPUP_CONFIRMATION(STR_CONFIRM_FORMAT);
   }
-#if defined(CPUARM)
   else if (result == STR_COPY_FILE) {
     clipboard.type = CLIPBOARD_TYPE_SD_FILE;
     f_getcwd(clipboard.data.sd.directory, CLIPBOARD_PATH_LEN);
@@ -93,7 +92,7 @@ void onSdManagerMenu(const char * result)
     f_getcwd(lfn, _MAX_LFN);
     // if destination is dir, copy into that dir
     if (IS_DIRECTORY(line)) {
-      strcat(lfn, PSTR("/"));
+      strcat(lfn, "/");
       strcat(lfn, line);
     }
     if (strcmp(clipboard.data.sd.directory, lfn)) {  // prevent copying to the same directory
@@ -111,22 +110,19 @@ void onSdManagerMenu(const char * result)
     s_editMode = EDIT_MODIFY_STRING;
     editNameCursorPos = 0;
   }
-#endif
   else if (result == STR_DELETE_FILE) {
     getSelectionFullPath(lfn);
     f_unlink(lfn);
     strncpy(statusLineMsg, line, 13);
-    strcpy_P(statusLineMsg+min((uint8_t)strlen(statusLineMsg), (uint8_t)13), STR_REMOVED);
+    strcpy(statusLineMsg+min((uint8_t)strlen(statusLineMsg), (uint8_t)13), STR_REMOVED);
     showStatusLine();
     REFRESH_FILES();
   }
-#if defined(CPUARM)
   else if (result == STR_PLAY_FILE) {
     getSelectionFullPath(lfn);
     audioQueue.stopAll();
     audioQueue.playFile(lfn, 0, ID_PLAY_FROM_SD_MANAGER);
   }
-#endif
 #if LCD_DEPTH > 1
   else if (result == STR_ASSIGN_BITMAP) {
     strAppendFilename(g_model.header.bitmap, line, sizeof(g_model.header.bitmap));
@@ -134,12 +130,10 @@ void onSdManagerMenu(const char * result)
     storageDirty(EE_MODEL);
   }
 #endif
-#if defined(CPUARM)
   else if (result == STR_VIEW_TEXT) {
     getSelectionFullPath(lfn);
     pushMenuTextView(lfn);
   }
-#endif
 #if defined(PCBTARANIS)
   else if (result == STR_FLASH_BOOTLOADER) {
     getSelectionFullPath(lfn);
@@ -149,9 +143,14 @@ void onSdManagerMenu(const char * result)
     getSelectionFullPath(lfn);
     sportFlashDevice(INTERNAL_MODULE, lfn);
   }
-  else if (result == STR_FLASH_EXTERNAL_DEVICE) {
+  else if (result == STR_FLASH_EXTERNAL_MODULE) {
+    // needed on X-Lite (as the R9M needs 2S while the external device flashing port only provides 5V)
     getSelectionFullPath(lfn);
     sportFlashDevice(EXTERNAL_MODULE, lfn);
+  }
+  else if (result == STR_FLASH_EXTERNAL_DEVICE) {
+    getSelectionFullPath(lfn);
+    sportFlashDevice(SPORT_MODULE, lfn);
   }
 #endif
 #if defined(LUA)
@@ -167,13 +166,10 @@ void menuRadioSdManager(event_t _event)
   if (warningResult) {
     warningResult = 0;
     showMessageBox(STR_FORMATTING);
+#if defined(SDCARD)
     logsClose();
-#if defined(PCBSKY9X)
-    Card_state = SD_ST_DATA;
 #endif
-#if defined(CPUARM)
     audioQueue.stopSD();
-#endif
     if(sdCardFormat()) {
       f_chdir("/");
       REFRESH_FILES();
@@ -200,7 +196,7 @@ void menuRadioSdManager(event_t _event)
       menuVerticalOffset = reusableBuffer.sdmanager.offset;
       break;
 
-#if defined(PCBTARANIS)
+#if defined(PCBX9) || defined(PCBX7) // TODO NO_MENU_KEY
     case EVT_KEY_LONG(KEY_MENU):
       if (!READ_ONLY() && s_editMode == 0) {
         killEvents(_event);
@@ -237,7 +233,7 @@ void menuRadioSdManager(event_t _event)
       break;
 
     case EVT_KEY_LONG(KEY_ENTER):
-#if !defined(PCBTARANIS)
+#if !defined(PCBX9) && !defined(PCBX7) // TODO NO_HEADER_LINE
       if (menuVerticalPosition < HEADER_LINE) {
         killEvents(_event);
         POPUP_MENU_ADD_ITEM(STR_SD_INFO);
@@ -253,7 +249,6 @@ void menuRadioSdManager(event_t _event)
         if (!strcmp(line, "..")) {
           break; // no menu for parent dir
         }
-#if defined(CPUARM)
         const char * ext = getFileExtension(line);
         if (ext) {
           if (!strcasecmp(ext, SOUNDS_EXT)) {
@@ -283,20 +278,19 @@ void menuRadioSdManager(event_t _event)
             }
           }
           else if (!READ_ONLY() && !strcasecmp(ext, SPORT_FIRMWARE_EXT)) {
-            POPUP_MENU_ADD_ITEM(STR_FLASH_EXTERNAL_DEVICE);
+            if (HAS_SPORT_UPDATE_CONNECTOR())
+              POPUP_MENU_ADD_ITEM(STR_FLASH_EXTERNAL_DEVICE);
             POPUP_MENU_ADD_ITEM(STR_FLASH_INTERNAL_MODULE);
+            POPUP_MENU_ADD_ITEM(STR_FLASH_EXTERNAL_MODULE);
           }
 #endif
         }
-#endif
         if (!READ_ONLY()) {
-#if defined(CPUARM)
           if (IS_FILE(line))
             POPUP_MENU_ADD_ITEM(STR_COPY_FILE);
           if (clipboard.type == CLIPBOARD_TYPE_SD_FILE)
             POPUP_MENU_ADD_ITEM(STR_PASTE);
           POPUP_MENU_ADD_ITEM(STR_RENAME_FILE);
-#endif
           if (IS_FILE(line))
             POPUP_MENU_ADD_ITEM(STR_DELETE_FILE);
         }
@@ -334,16 +328,17 @@ void menuRadioSdManager(event_t _event)
       bool firstTime = true;
       for (;;) {
         res = sdReadDir(&dir, &fno, firstTime);
-        if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
+        if (res != FR_OK || fno.fname[0] == 0) break;              /* Break on error or end of dir */
         if (strlen(fno.fname) > SD_SCREEN_FILE_LENGTH) continue;
-        if (fno.fname[0] == '.' && fno.fname[1] != '.') continue;             /* Ignore hidden files under UNIX, but not .. */
+        if (fno.fattrib & AM_HID) continue;                        /* Ignore Windows hidden files */
+        if (fno.fname[0] == '.' && fno.fname[1] != '.') continue;  /* Ignore UNIX hidden files, but not .. */
 
         reusableBuffer.sdmanager.count++;
 
         bool isfile = !(fno.fattrib & AM_DIR);
 
         if (menuVerticalOffset == 0) {
-          for (uint8_t i=0; i<NUM_BODY_LINES; i++) {
+          for (uint32_t i=0; i<NUM_BODY_LINES; i++) {
             char * line = reusableBuffer.sdmanager.lines[i];
             if (line[0] == '\0' || isFilenameLower(isfile, fno.fname, line)) {
               if (i < NUM_BODY_LINES-1) memmove(reusableBuffer.sdmanager.lines[i+1], line, sizeof(reusableBuffer.sdmanager.lines[i]) * (NUM_BODY_LINES-1-i));
@@ -388,7 +383,7 @@ void menuRadioSdManager(event_t _event)
   reusableBuffer.sdmanager.offset = menuVerticalOffset;
   int index = menuVerticalPosition - HEADER_LINE - menuVerticalOffset;
 
-  for (uint8_t i=0; i<NUM_BODY_LINES; i++) {
+  for (uint32_t i=0; i<NUM_BODY_LINES; i++) {
     coord_t y = MENU_HEADER_HEIGHT + 1 + i*FH;
     lcdNextPos = 0;
     LcdFlags attr = (index == i ? INVERS : 0);
@@ -396,7 +391,6 @@ void menuRadioSdManager(event_t _event)
       if (IS_DIRECTORY(reusableBuffer.sdmanager.lines[i])) {
         lcdDrawChar(0, y, '[', s_editMode == EDIT_MODIFY_STRING ? 0 : attr);
       }
-#if defined(CPUARM)
       if (s_editMode == EDIT_MODIFY_STRING && attr) {
         uint8_t extlen, efflen;
         const char * ext = getFileExtension(reusableBuffer.sdmanager.originalName, 0, 0, NULL, &extlen);
@@ -416,9 +410,6 @@ void menuRadioSdManager(event_t _event)
       else {
         lcdDrawText(lcdNextPos, y, reusableBuffer.sdmanager.lines[i], attr);
       }
-#else
-      lcdDrawText(lcdNextPos, y, reusableBuffer.sdmanager.lines[i], attr);
-#endif
       if (IS_DIRECTORY(reusableBuffer.sdmanager.lines[i])) {
         lcdDrawChar(lcdNextPos, y, ']', s_editMode == EDIT_MODIFY_STRING ? 0 : attr);
       }

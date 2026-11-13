@@ -21,10 +21,71 @@
 /* Includes ------------------------------------------------------------------*/
 
 #include "usb_bsp.h"
+
 #include "board.h"
 #include "usbd_conf.h"
 
 extern uint32_t SystemCoreClock;
+
+#if defined(STM32F0)
+#if defined USB_CLOCK_SOURCE_CRS
+static void CRS_Config(void);
+#endif
+
+void USB_BSP_Init(USB_CORE_HANDLE *pdev) {
+
+#if defined USB_CLOCK_SOURCE_CRS
+  LL_RCC_SetUSBClockSource(LL_RCC_USB_CLKSOURCE_HSI48);
+
+  CRS_Config();  
+#endif
+}
+
+void USB_BSP_Deinit(USB_CORE_HANDLE *pdev) {
+  //nothing to do
+}
+
+void USB_BSP_EnableInterrupt(USB_CORE_HANDLE *pdev) {
+  NVIC_SetPriority(USB_IRQn, 11);
+  NVIC_EnableIRQ(USB_IRQn);
+}
+
+void USB_BSP_DisableInterrupt(USB_CORE_HANDLE *pdev) {
+  NVIC_DisableIRQ(USB_IRQn);
+}
+
+void USB_BSP_DevConnect(USB_CORE_HANDLE *pdev) {
+
+}
+
+void USB_BSP_uDelay(const uint32_t usec) {
+  delay_us(usec);
+}
+
+void USB_BSP_mDelay(const uint32_t msec) {
+  delay_ms(msec);
+}
+
+#if defined USB_CLOCK_SOURCE_CRS
+/**
+  * @brief  Configure CRS peripheral to automatically trim the HSI 
+  *         oscillator according to USB SOF
+  * @param  None
+  * @retval None
+  */
+static void CRS_Config(void)
+{
+  LL_CRS_SetSyncSignalSource(LL_CRS_SYNC_SOURCE_USB);
+  
+  /*Enables the automatic hardware adjustment of TRIM bits: AUTOTRIMEN:*/
+  LL_CRS_EnableAutoTrimming();
+  
+  /*Enables the oscillator clock for frequency error counter CEN*/
+  LL_CRS_EnableFreqErrorCounter();
+}
+#endif
+
+#else
 
 /**
 * @brief  USB_OTG_BSP_Init
@@ -33,12 +94,10 @@ extern uint32_t SystemCoreClock;
 * @retval None
 */
 
-void USB_OTG_BSP_Init(USB_OTG_CORE_HANDLE *pdev)
-{
-  GPIO_InitTypeDef GPIO_InitStructure;  
-  
+void USB_OTG_BSP_Init(USB_OTG_CORE_HANDLE *pdev) {
+  GPIO_InitTypeDef GPIO_InitStructure;
   RCC_AHB1PeriphClockCmd(USB_RCC_AHB1Periph_GPIO, ENABLE);
-  
+
   /* Configure DM and DP Pins */
   GPIO_InitStructure.GPIO_Pin = USB_GPIO_PIN_DM | USB_GPIO_PIN_DP;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz;
@@ -46,25 +105,24 @@ void USB_OTG_BSP_Init(USB_OTG_CORE_HANDLE *pdev)
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_Init(USB_GPIO, &GPIO_InitStructure);
-  
+
   GPIO_PinAFConfig(USB_GPIO, USB_GPIO_PinSource_DM, USB_GPIO_AF);
   GPIO_PinAFConfig(USB_GPIO, USB_GPIO_PinSource_DP, USB_GPIO_AF);
-  
+
   /* Configure VBUS Pin */
   GPIO_InitStructure.GPIO_Pin = USB_GPIO_PIN_VBUS;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
-  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL ;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_Init(USB_GPIO, &GPIO_InitStructure);
-  
+
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
-  RCC_AHB2PeriphClockCmd(RCC_AHB2Periph_OTG_FS, ENABLE) ; 
+  RCC_AHB2PeriphClockCmd(RCC_AHB2Periph_OTG_FS, ENABLE);
 }
 
-void USB_OTG_BSP_Deinit(USB_OTG_CORE_HANDLE *pdev)
-{
-  //nothing to do  
+void USB_OTG_BSP_Deinit(USB_OTG_CORE_HANDLE *pdev) {
+  //nothing to do
 }
 
 /**
@@ -73,9 +131,8 @@ void USB_OTG_BSP_Deinit(USB_OTG_CORE_HANDLE *pdev)
 * @param  None
 * @retval None
 */
-void USB_OTG_BSP_EnableInterrupt(USB_OTG_CORE_HANDLE *pdev)
-{
-  NVIC_SetPriority(OTG_FS_IRQn, 11); // Lower priority interrupt
+void USB_OTG_BSP_EnableInterrupt(USB_OTG_CORE_HANDLE *pdev) {
+  NVIC_SetPriority(OTG_FS_IRQn, 11);  // Lower priority interrupt
   NVIC_EnableIRQ(OTG_FS_IRQn);
 }
 
@@ -85,11 +142,9 @@ void USB_OTG_BSP_EnableInterrupt(USB_OTG_CORE_HANDLE *pdev)
 * @param  None
 * @retval None
 */
-void USB_OTG_BSP_DisableInterrupt(USB_OTG_CORE_HANDLE *pdev)
-{
+void USB_OTG_BSP_DisableInterrupt(USB_OTG_CORE_HANDLE *pdev) {
   NVIC_DisableIRQ(OTG_FS_IRQn);
 }
-
 
 /**
 * @brief  USB_OTG_BSP_uDelay
@@ -97,11 +152,9 @@ void USB_OTG_BSP_DisableInterrupt(USB_OTG_CORE_HANDLE *pdev)
 * @param  usec : Value of delay required in micro sec
 * @retval None
 */
-void USB_OTG_BSP_uDelay (const uint32_t usec)
-{
+void USB_OTG_BSP_uDelay(const uint32_t usec) {
   delay_us(usec);
 }
-
 
 /**
 * @brief  USB_OTG_BSP_mDelay
@@ -109,10 +162,9 @@ void USB_OTG_BSP_uDelay (const uint32_t usec)
 * @param  msec : Value of delay required in milli sec
 * @retval None
 */
-void USB_OTG_BSP_mDelay (const uint32_t msec)
-{
+void USB_OTG_BSP_mDelay(const uint32_t msec) {
   delay_ms(msec);
 }
-
+#endif // STM32F0
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

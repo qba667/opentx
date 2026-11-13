@@ -86,7 +86,7 @@ void intmodulePxxStart()
   // UART config
   USART_DeInit(INTMODULE_USART);
   USART_InitTypeDef USART_InitStructure;
-  USART_InitStructure.USART_BaudRate = 115200;
+  USART_InitStructure.USART_BaudRate = INTMODULE_USART_PXX_BAUDRATE;
   USART_InitStructure.USART_Parity = USART_Parity_No;
   USART_InitStructure.USART_StopBits = USART_StopBits_1;
   USART_InitStructure.USART_WordLength = USART_WordLength_8b;
@@ -98,8 +98,8 @@ void intmodulePxxStart()
   // Timer
   INTMODULE_TIMER->CR1 &= ~TIM_CR1_CEN;
   INTMODULE_TIMER->PSC = INTMODULE_TIMER_FREQ / 2000000 - 1; // 0.5uS (2Mhz)
-  INTMODULE_TIMER->ARR = 18000; // 9mS
-  INTMODULE_TIMER->CCR2 = 15000; // Update time
+  INTMODULE_TIMER->ARR = PXX_PERIOD_HALF_US;
+  INTMODULE_TIMER->CCR2 = PXX_PERIOD_HALF_US - 2000; // Update time
   INTMODULE_TIMER->CCER = TIM_CCER_CC3E;
   INTMODULE_TIMER->CCMR2 = 0;
   INTMODULE_TIMER->EGR = 1; // Restart
@@ -124,14 +124,14 @@ extern "C" void INTMODULE_DMA_STREAM_IRQHandler(void)
 
 void intmoduleSendNextFrame()
 {
-  if (s_current_protocol[INTERNAL_MODULE] == PROTO_PXX) {
+  if (moduleState[INTERNAL_MODULE].protocol == PROTO_PXX) {
     DMA_InitTypeDef DMA_InitStructure;
     DMA_DeInit(INTMODULE_DMA_STREAM);
     DMA_InitStructure.DMA_Channel = INTMODULE_DMA_CHANNEL;
     DMA_InitStructure.DMA_PeripheralBaseAddr = CONVERT_PTR_UINT(&INTMODULE_USART->DR);
     DMA_InitStructure.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-    DMA_InitStructure.DMA_Memory0BaseAddr = CONVERT_PTR_UINT(modulePulsesData[INTERNAL_MODULE].pxx_uart.pulses);
-    DMA_InitStructure.DMA_BufferSize = modulePulsesData[INTERNAL_MODULE].pxx_uart.ptr - modulePulsesData[INTERNAL_MODULE].pxx_uart.pulses;
+    DMA_InitStructure.DMA_Memory0BaseAddr = CONVERT_PTR_UINT(intmodulePulsesData.pxx_uart.getData());
+    DMA_InitStructure.DMA_BufferSize = intmodulePulsesData.pxx_uart.getSize();
     DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
     DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
     DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;

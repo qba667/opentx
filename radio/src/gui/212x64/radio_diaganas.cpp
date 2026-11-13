@@ -22,11 +22,9 @@
 
 void menuRadioDiagAnalogs(event_t event)
 {
-  SIMPLE_MENU(STR_MENU_RADIO_ANALOGS, menuTabGeneral, MENU_RADIO_ANALOGS_TEST, 0);
+  SIMPLE_SUBMENU(STR_MENU_RADIO_ANALOGS, 0);
 
-  STICK_SCROLL_DISABLE();
-
-  for (uint8_t i=0; i<NUM_STICKS+NUM_POTS+NUM_SLIDERS; i++) {
+  for (uint32_t i=0; i<NUM_STICKS+NUM_POTS+NUM_SLIDERS; i++) {
     coord_t y = MENU_HEADER_HEIGHT + 1 + (i/2)*FH;
     uint8_t x = i&1 ? LCD_W/2 + FW : 0;
     lcdDrawNumber(x, y, i+1, LEADING0|LEFT, 2);
@@ -42,7 +40,7 @@ void menuRadioDiagAnalogs(event_t event)
   }
 
   // RAS
-  if((IS_MODULE_XJT(INTERNAL_MODULE) && IS_INTERNAL_MODULE_ON()) || (IS_MODULE_PXX(EXTERNAL_MODULE) && !IS_INTERNAL_MODULE_ON())) {
+  if((isModuleXJT(INTERNAL_MODULE) && IS_INTERNAL_MODULE_ON()) || (isModulePXX(EXTERNAL_MODULE) && !IS_INTERNAL_MODULE_ON())) {
     lcdDrawTextAlignedLeft(MENU_HEADER_HEIGHT+6*FH, "RAS");
     lcdDrawNumber(10*FW-1, MENU_HEADER_HEIGHT+6*FH, telemetryData.swr.value, RIGHT);
     lcdDrawText(LCD_W/2, MENU_HEADER_HEIGHT+6*FH, "XJTVER");

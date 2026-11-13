@@ -22,14 +22,13 @@
 #include "ui_setup.h"
 #include "ui_setup_timer.h"
 #include "ui_setup_module.h"
-#include "switchitemmodel.h"
-#include "helpers.h"
+#include "rawitemfilteredmodel.h"
 #include "appdata.h"
 #include "modelprinter.h"
 #include "multiprotocols.h"
 #include "checklistdialog.h"
 
-TimerPanel::TimerPanel(QWidget *parent, ModelData & model, TimerData & timer, GeneralSettings & generalSettings, Firmware * firmware, QWidget * prevFocus):
+TimerPanel::TimerPanel(QWidget *parent, ModelData & model, TimerData & timer, GeneralSettings & generalSettings, Firmware * firmware, QWidget * prevFocus, RawSwitchFilterItemModel * switchModel):
   ModelPanel(parent, model, generalSettings, firmware),
   timer(timer),
   ui(new Ui::Timer)
@@ -51,9 +50,9 @@ TimerPanel::TimerPanel(QWidget *parent, ModelData & model, TimerData & timer, Ge
   }
 
   // Mode
-  rawSwitchItemModel = new RawSwitchFilterItemModel(&generalSettings, &model, TimersContext);
-  ui->mode->setModel(rawSwitchItemModel);
+  ui->mode->setModel(switchModel);
   ui->mode->setCurrentIndex(ui->mode->findData(timer.mode.toValue()));
+  connect(ui->mode, SIGNAL(activated(int)), this, SLOT(onModeChanged(int)));
 
   if (!firmware->getCapability(PermTimers)) {
     ui->persistent->hide();
@@ -93,12 +92,11 @@ TimerPanel::~TimerPanel()
 
 void TimerPanel::update()
 {
-  rawSwitchItemModel->update();
-
   int hour = timer.val / 3600;
   int min = (timer.val - (hour * 3600)) / 60;
   int sec = (timer.val - (hour * 3600)) % 60;
 
+  ui->mode->setCurrentIndex(ui->mode->findData(timer.mode.toValue()));
   ui->value->setTime(QTime(hour, min, sec));
 
   if (firmware->getCapability(PermTimers)) {
@@ -132,10 +130,15 @@ void TimerPanel::on_value_editingFinished()
   }
 }
 
-void TimerPanel::on_mode_currentIndexChanged(int index)
+void TimerPanel::onModeChanged(int index)
 {
-  if (!lock) {
-    timer.mode = RawSwitch(ui->mode->itemData(index).toInt());
+  if (lock)
+    return;
+
+  bool ok;
+  const RawSwitch rs(ui->mode->itemData(index).toInt(&ok));
+  if (ok && timer.mode.toValue() != rs.toValue()) {
+    timer.mode = rs;
     emit modified();
   }
 }
@@ -186,9 +189,8 @@ ModulePanel::ModulePanel(QWidget * parent, ModelData & model, ModuleData & modul
 
   ui->setupUi(this);
 
-  QString label;
+  ui->label_module->setText(ModuleData::indexToString(moduleIdx, firmware));
   if (moduleIdx < 0) {
-    label = tr("Trainer Port");
     if (IS_HORUS(firmware->getBoard())) {
       ui->trainerMode->setItemData(TRAINER_MODE_MASTER_CPPM_EXTERNAL_MODULE, 0, Qt::UserRole - 1);
       ui->trainerMode->setItemData(TRAINER_MODE_MASTER_SBUS_EXTERNAL_MODULE, 0, Qt::UserRole - 1);
@@ -206,36 +208,21 @@ ModulePanel::ModulePanel(QWidget * parent, ModelData & model, ModuleData & modul
   else {
     ui->label_trainerMode->hide();
     ui->trainerMode->hide();
-    if (firmware->getCapability(NumModules) > 1) {
-      if (IS_HORUS_OR_TARANIS(firmware->getBoard())) {
-        if (moduleIdx == 0)
-          label = tr("Internal Radio System");
-        else
-          label = tr("External Radio Module");
-      }
-      else {
-        if (moduleIdx == 0)
-          label = tr("Radio System");
-        else
-          label = tr("Extra Radio System");
-      }
-    }
-    else {
-      label = tr("Radio System");
-    }
   }
-  ui->label_module->setText(label);
 
   // The protocols available on this board
   for (int i=0; i<PULSES_PROTOCOL_LAST; i++) {
-    if (firmware->isAvailable((PulsesProtocol)i, moduleIdx)) {
-      ui->protocol->addItem(ModelPrinter::printModuleProtocol(i), (QVariant)i);
+    if (firmware->isAvailable((PulsesProtocol) i, moduleIdx)) {
+      if (IS_TARANIS_XLITE(firmware->getBoard()) && i == PULSES_PXX_R9M)  //TODO remove when mini are handled as a different module type
+        ui->protocol->addItem("FrSky R9M Mini", (QVariant) i);
+      else
+        ui->protocol->addItem(ModuleData::protocolToString(i), i);
       if (i == module.protocol)
         ui->protocol->setCurrentIndex(ui->protocol->count()-1);
     }
   }
   for (int i=0; i<=MM_RF_PROTO_LAST; i++) {
-    ui->multiProtocol->addItem(ModelPrinter::printMultiRfProtocol(i, false), (QVariant) i);
+    ui->multiProtocol->addItem(Multiprotocols::protocolToString(i), i);
   }
 
   ui->btnGrpValueType->setId(ui->optPercent, FAILSAFE_DISPLAY_PERCENT);
@@ -249,6 +236,7 @@ ModulePanel::ModulePanel(QWidget * parent, ModelData & model, ModuleData & modul
   update();
 
   connect(ui->protocol, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &ModulePanel::onProtocolChanged);
+  connect(ui->multiSubType, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &ModulePanel::onSubTypeChanged);
   connect(ui->multiProtocol, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this, &ModulePanel::onMultiProtocolChanged);
   connect(this, &ModulePanel::channelsRangeChanged, this, &ModulePanel::setupFailsafes);
   connect(ui->btnGrpValueType, static_cast<void(QButtonGroup::*)(int)>(&QButtonGroup::buttonClicked), this, &ModulePanel::onFailsafesDisplayValueTypeChanged);
@@ -362,8 +350,10 @@ void ModulePanel::setupFailsafes()
 
 void ModulePanel::update()
 {
+  const PulsesProtocol protocol = (PulsesProtocol)module.protocol;
+  const Board::Type board = firmware->getBoard();
+  const Multiprotocols::MultiProtocolDefinition & pdef = multiProtocols.getProtocol(module.multi.rfProtocol);
   unsigned int mask = 0;
-  PulsesProtocol protocol = (PulsesProtocol)module.protocol;
   unsigned int max_rx_num = 63;
 
   if (moduleIdx >= 0) {
@@ -378,7 +368,7 @@ void ModulePanel::update()
         mask |= MASK_CHANNELS_RANGE | MASK_CHANNELS_COUNT;
         if (protocol==PULSES_PXX_XJT_X16 || protocol==PULSES_PXX_XJT_LR12 || protocol==PULSES_PXX_R9M)
           mask |= MASK_RX_NUMBER;
-        if (IS_HORUS(firmware->getBoard()) && moduleIdx==0)
+        if ((IS_HORUS(board) || IS_TARANIS_XLITE(board)) && moduleIdx==0)
           mask |= MASK_ANTENNA;
         break;
       case PULSES_LP45:
@@ -394,7 +384,7 @@ void ModulePanel::update()
         break;
       case PULSES_PPM:
         mask |= MASK_PPM_FIELDS | MASK_SBUSPPM_FIELDS| MASK_CHANNELS_RANGE| MASK_CHANNELS_COUNT;
-        if (IS_9XRPRO(firmware->getBoard())) {
+        if (IS_9XRPRO(board)) {
           mask |= MASK_OPEN_DRAIN;
         }
         break;
@@ -409,9 +399,9 @@ void ModulePanel::update()
           mask |= MASK_CHANNELS_COUNT;
         else
           module.channelsCount = 16;
-        if (multiProtocols.getProtocol(module.multi.rfProtocol).optionsstr != nullptr)
+        if (pdef.optionsstr != nullptr)
           mask |= MASK_MULTIOPTION;
-        if (multiProtocols.getProtocol(module.multi.rfProtocol).hasFailsafe)
+        if (pdef.hasFailsafe)
           mask |= MASK_FAILSAFES;
         break;
       case PULSES_OFF:
@@ -420,7 +410,7 @@ void ModulePanel::update()
         break;
     }
   }
-  else if (IS_HORUS_OR_TARANIS(firmware->getBoard())) {
+  else if (IS_HORUS_OR_TARANIS(board)) {
     if (model->trainerMode == TRAINER_SLAVE_JACK) {
       mask |= MASK_PPM_FIELDS | MASK_CHANNELS_RANGE | MASK_CHANNELS_COUNT;
     }
@@ -464,15 +454,27 @@ void ModulePanel::update()
   ui->ppmFrameLength->setMaximum(firmware->getCapability(PPMFrameLength));
   ui->ppmFrameLength->setValue(22.5+((double)module.ppm.frameLength)*0.5);
 
-  // Antenna slection on Horus
+  // Antenna selection on Horus and xlite
   ui->label_antenna->setVisible(mask & MASK_ANTENNA);
   ui->antennaMode->setVisible(mask & MASK_ANTENNA);
+  if IS_HORUS_X12S(board) {
+    ui->antennaMode->setItemText(1,tr("Ext. + Int"));
+  }
+  else {
+    ui->antennaMode->setItemText(1,tr("External"));
+  }
   ui->antennaMode->setCurrentIndex(module.pxx.external_antenna);
 
   // R9M options
-  ui->r9mPower->setVisible((mask & MASK_R9M) && module.subType == 0);
-  ui->label_r9mPower->setVisible((mask & MASK_R9M) && module.subType == 0);
+  ui->r9mPower->setVisible(mask & MASK_R9M);
+  ui->label_r9mPower->setVisible(mask & MASK_R9M);
+  ui->warning_r9mPower->setVisible((mask & MASK_R9M) && module.subType == MODULE_SUBTYPE_R9M_EU);
+  ui->warning_r9mFlex->setVisible((mask & MASK_R9M) && module.subType > MODULE_SUBTYPE_R9M_EU);
+
   if (mask & MASK_R9M) {
+    const QSignalBlocker blocker(ui->r9mPower);
+    ui->r9mPower->clear();
+    ui->r9mPower->addItems(ModuleData::powerValueStrings(module.subType, firmware));
     ui->r9mPower->setCurrentIndex(module.pxx.power);
   }
 
@@ -481,15 +483,17 @@ void ModulePanel::update()
   ui->multiSubType->setVisible(mask & MASK_SUBTYPES);
   if (mask & MASK_SUBTYPES) {
     unsigned numEntries = 2;  // R9M FCC/EU
+    unsigned i = 0;
     if (mask & MASK_MULTIMODULE)
-      numEntries = (module.multi.customProto ? 8 : multiProtocols.getProtocol(module.multi.rfProtocol).numSubytes());
-
-    bool blocker = ui->multiSubType->blockSignals(true);
+      numEntries = (module.multi.customProto ? 8 : pdef.numSubTypes());
+    else if (firmware->getCapability(HasModuleR9MFlex))
+      i = 2;
+    numEntries += i;
+    const QSignalBlocker blocker(ui->multiSubType);
     ui->multiSubType->clear();
-    for (unsigned i=0; i < numEntries; i++)
-      ui->multiSubType->addItem(ModelPrinter::printModuleSubType(protocol, i, module.multi.rfProtocol, module.multi.customProto), i);
-    ui->multiSubType->setCurrentIndex(module.subType);
-    ui->multiSubType->blockSignals(blocker);
+    for ( ; i < numEntries; i++)
+      ui->multiSubType->addItem(module.subTypeToString(i), i);
+    ui->multiSubType->setCurrentIndex(ui->multiSubType->findData(module.subType));
   }
 
   // Multi settings fields
@@ -502,12 +506,11 @@ void ModulePanel::update()
 
   if (mask & MASK_MULTIMODULE) {
     ui->multiProtocol->setCurrentIndex(module.multi.rfProtocol);
-    ui->autoBind->setChecked(module.multi.autoBindMode ? Qt::Checked : Qt::Unchecked);
-    ui->lowPower->setChecked(module.multi.lowPowerMode ? Qt::Checked : Qt::Unchecked);
+    ui->autoBind->setChecked(module.multi.autoBindMode);
+    ui->lowPower->setChecked(module.multi.lowPowerMode);
   }
 
   if (mask & MASK_MULTIOPTION) {
-    auto pdef = multiProtocols.getProtocol(module.multi.rfProtocol);
     ui->optionValue->setMinimum(pdef.getOptionMin());
     ui->optionValue->setMaximum(pdef.getOptionMax());
     ui->optionValue->setValue(module.multi.optionValue);
@@ -555,7 +558,7 @@ void ModulePanel::update()
 
 void ModulePanel::on_trainerMode_currentIndexChanged(int index)
 {
-  if (!lock) {
+  if (!lock && model->trainerMode != (unsigned)index) {
     model->trainerMode = index;
     update();
     emit modified();
@@ -564,7 +567,7 @@ void ModulePanel::on_trainerMode_currentIndexChanged(int index)
 
 void ModulePanel::onProtocolChanged(int index)
 {
-  if (!lock) {
+  if (!lock && module.protocol != ui->protocol->itemData(index).toInt()) {
     module.protocol = ui->protocol->itemData(index).toInt();
     update();
     emit modified();
@@ -573,26 +576,34 @@ void ModulePanel::onProtocolChanged(int index)
 
 void ModulePanel::on_ppmPolarity_currentIndexChanged(int index)
 {
-  module.ppm.pulsePol = index;
-  emit modified();
+  if (!lock && module.ppm.pulsePol != (bool)index) {
+    module.ppm.pulsePol = index;
+    emit modified();
+  }
 }
 
 void ModulePanel::on_antennaMode_currentIndexChanged(int index)
 {
-  module.pxx.external_antenna = index;
-  emit modified();
+  if (!lock && module.pxx.external_antenna != (bool)index) {
+    module.pxx.external_antenna = index;
+    emit modified();
+  }
 }
 
 void ModulePanel::on_r9mPower_currentIndexChanged(int index)
 {
-  module.pxx.power = index;
-  emit modified();
+  if (!lock && module.pxx.power != index) {
+    module.pxx.power = index;
+    emit modified();
+  }
 }
 
 void ModulePanel::on_ppmOutputType_currentIndexChanged(int index)
 {
-  module.ppm.outputType = index;
-  emit modified();
+  if (!lock && module.ppm.outputType != (bool)index) {
+    module.ppm.outputType = index;
+    emit modified();
+  }
 }
 
 void ModulePanel::on_channelsCount_editingFinished()
@@ -643,7 +654,7 @@ void ModulePanel::on_ppmFrameLength_editingFinished()
 
 void ModulePanel::on_failsafeMode_currentIndexChanged(int value)
 {
-  if (!lock) {
+  if (!lock && module.failsafeMode != (unsigned)value) {
     module.failsafeMode = value;
     update();
     emit modified();
@@ -652,10 +663,10 @@ void ModulePanel::on_failsafeMode_currentIndexChanged(int value)
 
 void ModulePanel::onMultiProtocolChanged(int index)
 {
-  if (!lock) {
+  if (!lock && module.multi.rfProtocol != (unsigned)index) {
     lock=true;
     module.multi.rfProtocol = (unsigned int) index;
-    unsigned int maxSubTypes = multiProtocols.getProtocol(index).numSubytes();
+    unsigned int maxSubTypes = multiProtocols.getProtocol(index).numSubTypes();
     if (module.multi.customProto)
       maxSubTypes=8;
     module.subType = std::min(module.subType, maxSubTypes -1);
@@ -673,11 +684,12 @@ void ModulePanel::on_optionValue_editingFinished()
   }
 }
 
-void ModulePanel::on_multiSubType_currentIndexChanged(int index)
+void ModulePanel::onSubTypeChanged()
 {
-  if (!lock) {
+  const unsigned type = ui->multiSubType->currentData().toUInt();
+  if (!lock && module.subType != type) {
     lock=true;
-    module.subType = index;
+    module.subType = type;
     update();
     emit modified();
     lock =  false;
@@ -893,11 +905,15 @@ SetupPanel::SetupPanel(QWidget * parent, ModelData & model, GeneralSettings & ge
   }
 
   QWidget * prevFocus = ui->image;
+  RawSwitchFilterItemModel * swModel = new RawSwitchFilterItemModel(&generalSettings, &model, RawSwitch::TimersContext, this);
+  connect(this, &SetupPanel::updated, swModel, &RawSwitchFilterItemModel::update);
+
   for (int i=0; i<CPN_MAX_TIMERS; i++) {
     if (i<firmware->getCapability(Timers)) {
-      timers[i] = new TimerPanel(this, model, model.timers[i], generalSettings, firmware, prevFocus);
+      timers[i] = new TimerPanel(this, model, model.timers[i], generalSettings, firmware, prevFocus, swModel);
       ui->gridLayout->addWidget(timers[i], 1+i, 1);
       connect(timers[i], &TimerPanel::modified, this, &SetupPanel::modified);
+      connect(this, &SetupPanel::updated, timers[i], &TimerPanel::update);
       prevFocus = timers[i]->getLastFocus();
     }
     else {
@@ -1175,15 +1191,13 @@ void SetupPanel::update()
     updatePotWarnings();
   }
 
-  for (int i=0; i<firmware->getCapability(Timers); i++) {
-    timers[i]->update();
-  }
-
   for (int i=0; i<CPN_MAX_MODULES+1; i++) {
     if (modules[i]) {
       modules[i]->update();
     }
   }
+
+  emit updated();
 }
 
 void SetupPanel::updateBeepCenter()

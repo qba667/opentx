@@ -22,7 +22,7 @@
 
 #include "opentx.h"
 
-const pm_uchar sticks[] PROGMEM = {
+const unsigned char sticks[]  = {
 #include "sticks.lbm"
 };
 
@@ -33,10 +33,10 @@ const pm_uchar sticks[] PROGMEM = {
 #define SLIDER_5POS(y, value, label, event, attr) { \
   int8_t tmp = value; \
   drawSlider(RADIO_SETUP_2ND_COLUMN, y, 2+tmp, 4, attr); \
-  value = editChoice(RADIO_SETUP_2ND_COLUMN, y, label, NULL, tmp, -2, +2, attr, event); \
+  value = editChoice(RADIO_SETUP_2ND_COLUMN, y, label, nullptr, tmp, -2, +2, attr, event); \
 }
 
-#if defined(SPLASH) && !defined(FSPLASH)
+#if defined(SPLASH)
   #define CASE_SPLASH_PARAM(x) x,
 #else
   #define CASE_SPLASH_PARAM(x)
@@ -86,7 +86,6 @@ enum MenuRadioSetupItems {
   ITEM_SETUP_LANGUAGE,
   ITEM_SETUP_IMPERIAL,
   IF_FAI_CHOICE(ITEM_SETUP_FAI)
-  CASE_MAVLINK(ITEM_MAVLINK_BAUD)
   ITEM_SETUP_SWITCHES_DELAY,
   ITEM_SETUP_USB_MODE,
   ITEM_SETUP_RX_CHANNEL_ORD,
@@ -117,7 +116,7 @@ void menuRadioSetup(event_t event)
   }
 #endif
 
-  MENU(STR_MENURADIOSETUP, menuTabGeneral, MENU_RADIO_SETUP, ITEM_SETUP_MAX, { 2, 2, 0, 1, LABEL(SOUND), 0, 0, 0, 0, 0, 0, 0, CASE_VARIO(LABEL(VARIO)) CASE_VARIO(0) CASE_VARIO(0) CASE_VARIO(0) CASE_VARIO(0) CASE_HAPTIC(LABEL(HAPTIC)) CASE_HAPTIC(0) CASE_HAPTIC(0) CASE_HAPTIC(0) 0, LABEL(ALARMS), 0, 0, 0, 0, 0,IF_ROTARY_ENCODERS(0) LABEL(BACKLIGHT), 0, 0, 0, CASE_PCBX9E_PCBX9DP(0) 0, CASE_SPLASH_PARAM(0) CASE_GPS(LABEL(GPS)) CASE_GPS(0) CASE_GPS(0) CASE_GPS(0) CASE_PXX(0) 0, 0, IF_FAI_CHOICE(0) CASE_MAVLINK(0) 0, 0, 0, LABEL(TX_MODE), 0, 1/*to force edit mode*/ });
+  MENU(STR_MENURADIOSETUP, menuTabGeneral, MENU_RADIO_SETUP, ITEM_SETUP_MAX, { 2, 2, 0, 1, LABEL(SOUND), 0, 0, 0, 0, 0, 0, 0, CASE_VARIO(LABEL(VARIO)) CASE_VARIO(0) CASE_VARIO(0) CASE_VARIO(0) CASE_VARIO(0) CASE_HAPTIC(LABEL(HAPTIC)) CASE_HAPTIC(0) CASE_HAPTIC(0) CASE_HAPTIC(0) 0, LABEL(ALARMS), 0, 0, 0, 0, 0,IF_ROTARY_ENCODERS(0) LABEL(BACKLIGHT), 0, 0, 0, CASE_PCBX9E_PCBX9DP(0) 0, CASE_SPLASH_PARAM(0) CASE_GPS(LABEL(GPS)) CASE_GPS(0) CASE_GPS(0) CASE_GPS(0) CASE_PXX(0) 0, 0, IF_FAI_CHOICE(0) 0, 0, 0, LABEL(TX_MODE), 0, 1/*to force edit mode*/ });
 
   if (event == EVT_ENTRY) {
     reusableBuffer.generalSettings.stickMode = g_eeGeneral.stickMode;
@@ -125,7 +124,7 @@ void menuRadioSetup(event_t event)
 
   int sub = menuVerticalPosition;
 
-  for (uint8_t i=0; i<NUM_BODY_LINES; i++) {
+  for (uint32_t i=0; i<NUM_BODY_LINES; i++) {
     coord_t y = MENU_HEADER_HEIGHT + 1 + i*FH;
     uint8_t k = i + menuVerticalOffset;
     uint8_t blink = ((s_editMode>0) ? BLINK|INVERS : INVERS);
@@ -150,8 +149,8 @@ void menuRadioSetup(event_t event)
             {
               int16_t year = TM_YEAR_BASE + t.tm_year;
               int8_t dlim = (((((year%4==0) && (year%100!=0)) || (year%400==0)) && (t.tm_mon==1)) ? 1 : 0);
-              static const pm_uint8_t dmon[] PROGMEM = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-              dlim += pgm_read_byte(&dmon[t.tm_mon]);
+              static const uint8_t dmon[]  = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+              dlim += dmon[t.tm_mon];
               lcdDrawNumber(RADIO_SETUP_DATE_COLUMN+6*FW-4, y, t.tm_mday, rowattr|LEADING0|RIGHT, 2);
               if (rowattr && s_editMode>0) t.tm_mday = checkIncDec(event, t.tm_mday, 1, dlim, 0);
               break;
@@ -218,9 +217,6 @@ void menuRadioSetup(event_t event)
 
       case ITEM_SETUP_BEEP_MODE:
         g_eeGeneral.beepMode = editChoice(RADIO_SETUP_2ND_COLUMN, y, STR_SPEAKER, STR_VBEEPMODE, g_eeGeneral.beepMode, -2, 1, attr, event);
-#if defined(TELEMETRY_FRSKY)
-        if (attr && checkIncDec_Ret) frskySendAlarms();
-#endif
         break;
 
       case ITEM_SETUP_GENERAL_VOLUME:
@@ -300,7 +296,7 @@ void menuRadioSetup(event_t event)
         break;
 
       case ITEM_SETUP_HAPTIC_MODE:
-        g_eeGeneral.hapticMode = editChoice(RADIO_SETUP_2ND_COLUMN, y, STR_MODE, STR_VBEEPMODE, g_eeGeneral.hapticMode, -2, 1, attr, event);
+        g_eeGeneral.hapticMode = editChoice(RADIO_SETUP_2ND_COLUMN, y, INDENT TR_MODE, STR_VBEEPMODE, g_eeGeneral.hapticMode, -2, 1, attr, event);
         break;
 
       case ITEM_SETUP_HAPTIC_LENGTH:
@@ -364,7 +360,7 @@ void menuRadioSetup(event_t event)
         break;
 
       case ITEM_SETUP_BACKLIGHT_MODE:
-        g_eeGeneral.backlightMode = editChoice(RADIO_SETUP_2ND_COLUMN, y, STR_MODE, STR_VBLMODE, g_eeGeneral.backlightMode, e_backlight_mode_off, e_backlight_mode_on, attr, event);
+        g_eeGeneral.backlightMode = editChoice(RADIO_SETUP_2ND_COLUMN, y, INDENT TR_MODE, STR_VBLMODE, g_eeGeneral.backlightMode, e_backlight_mode_off, e_backlight_mode_on, attr, event);
         break;
 
       case ITEM_SETUP_FLASH_BEEP:
@@ -396,7 +392,7 @@ void menuRadioSetup(event_t event)
         break;
 #endif
 
-#if defined(SPLASH) && !defined(FSPLASH)
+#if defined(SPLASH)
       case ITEM_SETUP_DISABLE_SPLASH:
       {
         lcdDrawTextAlignedLeft(y, STR_SPLASHSCREEN);
@@ -412,7 +408,7 @@ void menuRadioSetup(event_t event)
       }
 #endif
 
-#if defined(TELEMETRY_FRSKY) && defined(FRSKY_HUB) && defined(GPS)
+#if defined(TELEMETRY_FRSKY) && defined(GPS)
       case ITEM_SETUP_LABEL_GPS:
         lcdDrawTextAlignedLeft(y, STR_GPS);
         break;
@@ -437,9 +433,10 @@ void menuRadioSetup(event_t event)
         g_eeGeneral.countryCode = editChoice(RADIO_SETUP_2ND_COLUMN, y, STR_COUNTRYCODE, STR_COUNTRYCODES, g_eeGeneral.countryCode, 0, 2, attr, event);
         break;
 #endif
-
+#if defined(VOICE)
       case ITEM_SETUP_LANGUAGE:
         lcdDrawTextAlignedLeft(y, STR_VOICELANG);
+
         lcdDrawText(RADIO_SETUP_2ND_COLUMN, y, currentLanguagePack->name, attr);
         if (attr) {
           currentLanguagePackIdx = checkIncDec(event, currentLanguagePackIdx, 0, DIM(languagePacks)-2, EE_GENERAL);
@@ -449,28 +446,23 @@ void menuRadioSetup(event_t event)
           }
         }
         break;
-
+#endif
       case ITEM_SETUP_IMPERIAL:
         g_eeGeneral.imperial = editChoice(RADIO_SETUP_2ND_COLUMN, y, STR_UNITSSYSTEM, STR_VUNITSSYSTEM, g_eeGeneral.imperial, 0, 1, attr, event);
         break;
 
 #if defined(FAI_CHOICE)
       case ITEM_SETUP_FAI:
-        editCheckBox(g_eeGeneral.fai, RADIO_SETUP_2ND_COLUMN, y, PSTR("FAI Mode"), attr, event);
+        editCheckBox(g_eeGeneral.fai, RADIO_SETUP_2ND_COLUMN, y, "FAI Mode"), attr, event;
         if (attr && checkIncDec_Ret) {
           if (g_eeGeneral.fai)
-            POPUP_WARNING(PSTR("FAI\001mode blocked!"));
+            POPUP_WARNING("FAI\001mode blocked!");
           else
-            POPUP_CONFIRMATION(PSTR("FAI mode?"));
+            POPUP_CONFIRMATION("FAI mode?");
         }
         break;
 #endif
 
-#if defined(TELEMETRY_MAVLINK)
-      case ITEM_MAVLINK_BAUD:
-        g_eeGeneral.mavbaud = editChoice(RADIO_SETUP_2ND_COLUMN, y, STR_MAVLINK_BAUD_LABEL, STR_MAVLINK_BAUDS, g_eeGeneral.mavbaud, 0, 7, attr, event);
-        break;
-#endif
 
       case ITEM_SETUP_SWITCHES_DELAY:
         lcdDrawTextAlignedLeft(y, STR_SWITCHES_DELAY);
@@ -485,23 +477,23 @@ void menuRadioSetup(event_t event)
 
       case ITEM_SETUP_RX_CHANNEL_ORD:
         lcdDrawTextAlignedLeft(y, STR_RXCHANNELORD); // RAET->AETR
-        for (uint8_t i=1; i<=4; i++) {
+        for (uint32_t i=1; i<=4; i++) {
           putsChnLetter(RADIO_SETUP_2ND_COLUMN - FW + i*FW, y, channel_order(i), attr);
         }
         if (attr) CHECK_INCDEC_GENVAR(event, g_eeGeneral.templateSetup, 0, 23);
         break;
 
       case ITEM_SETUP_STICK_MODE_LABELS:
-        lcdDrawTextAlignedLeft(y, NO_INDENT(STR_MODE));
-        for (uint8_t i=0; i<4; i++) {
+        lcdDrawTextAlignedLeft(y, STR_MODE);
+        for (uint32_t i=0; i<4; i++) {
           lcdDraw1bitBitmap((6+4*i)*FW, y, sticks, i, 0);
         }
         break;
 
       case ITEM_SETUP_STICK_MODE:
         lcdDrawChar(2*FW, y, '1'+reusableBuffer.generalSettings.stickMode, attr);
-        for (uint8_t i=0; i<4; i++) {
-          putsStickName((6+4*i)*FW, y, pgm_read_byte(modn12x3 + 4*reusableBuffer.generalSettings.stickMode + i), 0);
+        for (uint32_t i=0; i<4; i++) {
+          putsStickName((6+4*i)*FW, y, *(modn12x3 + 4*reusableBuffer.generalSettings.stickMode + i), 0);
         }
         if (attr && s_editMode>0) {
           CHECK_INCDEC_GENVAR(event, reusableBuffer.generalSettings.stickMode, 0, 3);
@@ -509,9 +501,9 @@ void menuRadioSetup(event_t event)
         else if (reusableBuffer.generalSettings.stickMode != g_eeGeneral.stickMode) {
           pausePulses();
           g_eeGeneral.stickMode = reusableBuffer.generalSettings.stickMode;
-          checkTHR();
+          checkThrottleStick();
           resumePulses();
-          clearKeyEvents();
+          waitKeysReleased();
         }
         break;
     }

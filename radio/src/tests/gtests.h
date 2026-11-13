@@ -27,6 +27,7 @@
 
 #define SWAP_DEFINED
 #include "opentx.h"
+#include "model_init.h"  // setModelDefaults() moved out of opentx.h
 
 #define CHANNEL_MAX (1024*256)
 
@@ -42,13 +43,25 @@ void doMixerCalculations();
   #define RADIO_RESET()
 #endif
 
+// Switch names in tests: 9X-style (THR, ID0-ID2, ...) or SA-SH style. TR() picks by screen
+// width, which no longer tells the layouts apart: PCBI6X is 128 px wide but has SA-SF.
+#if defined(PCBTARANIS) || defined(PCBHORUS) || defined(PCBI6X)
+  #define TR_SW(x, y)  y
+#else
+  #define TR_SW(x, y)  x
+#endif
+
 inline void SYSTEM_RESET()
 {
-#if defined(CPUARM) && defined(EEPROM)
+#if defined(EEPROM)
   memset(modelHeaders, 0, sizeof(modelHeaders));
 #endif
   generalDefault();
   g_eeGeneral.templateSetup = 0;
+  g_eeGeneral.stickMode = 0;  // tests index sticks physically (mode 1); DEFAULT_MODE targets (I6X) default to mode 2
+#if defined(STICK_DEAD_ZONE)
+  g_eeGeneral.stickDeadZone = 2; // Matches EdgeTX test value
+#endif
   for (int i=0; i<NUM_SWITCHES; i++) {
     simuSetSwitch(i, -1);
   }
@@ -60,6 +73,7 @@ inline void MODEL_RESET()
   memset(&anaInValues, 0, sizeof(anaInValues));
   extern uint8_t s_mixer_first_run_done;
   s_mixer_first_run_done = false;
+  evalMixes(1);  // this is needed to reset fp_act
   lastFlightMode = 255;
 }
 
@@ -70,10 +84,6 @@ inline void MIXER_RESET()
   memset(ex_chans, 0, sizeof(ex_chans));
   memset(act, 0, sizeof(act));
   memset(swOn, 0, sizeof(swOn));
-#if !defined(CPUARM)
-  s_last_switch_used = 0;
-  s_last_switch_value = 0;
-#endif
   mixerCurrentFlightMode = lastFlightMode = 0;
   lastAct = 0;
   logicalSwitchesReset();
@@ -85,14 +95,12 @@ inline void TELEMETRY_RESET()
   memclear(&telemetryData, sizeof(telemetryData));
   TELEMETRY_RSSI() = 100;
 #endif
-#if defined(CPUARM)
 #if defined(TELEMETRY_FRSKY)
   for (int i=0; i<MAX_TELEMETRY_SENSORS; i++) {
     telemetryItems[i].clear();
   }
 #endif
   memclear(g_model.telemetrySensors, sizeof(g_model.telemetrySensors));
-#endif
 }
 
 class OpenTxTest : public testing::Test 
@@ -108,7 +116,7 @@ class OpenTxTest : public testing::Test
       SYSTEM_RESET();
       MODEL_RESET();
       MIXER_RESET();
-      modelDefault(0);
+      setModelDefaults();
       RADIO_RESET();
     }
 };

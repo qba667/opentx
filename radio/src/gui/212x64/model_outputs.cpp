@@ -26,9 +26,7 @@ enum LimitsItems {
   ITEM_LIMITS_MIN,
   ITEM_LIMITS_MAX,
   ITEM_LIMITS_DIRECTION,
-#if defined(CURVES)
   ITEM_LIMITS_CURVE,
-#endif
 #if defined(PPM_CENTER_ADJUSTABLE)
   ITEM_LIMITS_PPM_CENTER,
 #endif
@@ -88,6 +86,9 @@ void onLimitsMenu(const char *result)
     copyTrimsToOffset(ch);
     storageDirty(EE_MODEL);
   }
+  else if (result == STR_COPY_MIN_MAX_TO_OUTPUTS) {
+    copyMinMaxToOutputs(ch);
+  }
 }
 
 void menuModelLimits(event_t event)
@@ -144,13 +145,13 @@ void menuModelLimits(event_t event)
       POPUP_MENU_ADD_ITEM(STR_RESET);
       POPUP_MENU_ADD_ITEM(STR_COPY_TRIMS_TO_OFS);
       POPUP_MENU_ADD_ITEM(STR_COPY_STICKS_TO_OFS);
+      POPUP_MENU_ADD_ITEM(STR_COPY_MIN_MAX_TO_OUTPUTS);
       POPUP_MENU_START(onLimitsMenu);
     }
 
     for (int j=0; j<ITEM_LIMITS_COUNT; j++) {
       LcdFlags attr = ((sub==k && menuHorizontalPosition==j) ? ((s_editMode>0) ? BLINK|INVERS : INVERS) : 0);
       uint8_t active = (attr && s_editMode>0) ;
-      if (active) STICK_SCROLL_DISABLE();
       switch(j)
       {
         case ITEM_LIMITS_CH_NAME:
@@ -208,7 +209,6 @@ void menuModelLimits(event_t event)
           break;
         }
 
-#if defined(CURVES)
         case ITEM_LIMITS_CURVE:
           drawCurveName(LIMITS_CURVE_POS, y, ld->curve, attr);
           if (attr && event==EVT_KEY_LONG(KEY_ENTER) && ld->curve>0) {
@@ -219,7 +219,6 @@ void menuModelLimits(event_t event)
             CHECK_INCDEC_MODELVAR(event, ld->curve, -MAX_CURVES, +MAX_CURVES);
           }
           break;
-#endif
 
 #if defined(PPM_CENTER_ADJUSTABLE)
         case ITEM_LIMITS_PPM_CENTER:

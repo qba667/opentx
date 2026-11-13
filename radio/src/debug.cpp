@@ -47,7 +47,8 @@ void debugPrintf(const char * format, ...)
 #if defined(DEBUG_TRACE_BUFFER)
 static struct TraceElement traceBuffer[TRACE_BUFFER_LEN];
 static uint8_t traceBufferPos;
-extern Fifo<uint8_t, 512> serial2TxFifo;
+#include "serial_buffer_union.h"
+extern SerialBufferUnion serialBuffer;
 gtime_t filltm(const gtime_t *t, struct gtm *tp);
 
 void trace_event(enum TraceEvent event, uint32_t data)
@@ -93,8 +94,8 @@ void dumpTraceBuffer()
     if (traceBuffer[n].time == 0 && traceBuffer[n].time_ms == 0) break;
 #if !defined(SIMU)
     if ((n % 5) == 0) {
-      while (!serial2TxFifo.isEmpty()) {
-        CoTickDelay(1);
+      while (!serialBuffer.auxSerialTxFifo.isEmpty()) {
+        sleep_ms(1);
       }
     }
 #endif
@@ -194,7 +195,7 @@ uint16_t taskSwitchLogPos;
 void CoTaskSwitchHook(uint8_t taskID)
 {
   /* Log task switch here */
-  taskSwitchLog[taskSwitchLogPos] = (taskID << 24) + ((uint32_t)CoGetOSTime() & 0xFFFFFF);
+  taskSwitchLog[taskSwitchLogPos] = (taskID << 24) + (time_get_ms() & 0xFFFFFF);
   if(++taskSwitchLogPos >= DEBUG_TASKS_LOG_SIZE) {
     taskSwitchLogPos = 0;
   }

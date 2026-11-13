@@ -19,7 +19,7 @@
  */
 
 #include "opentx.h"
-
+#if defined(BOOT)
 bool isBootloader(const char * filename)
 {
   FIL file;
@@ -61,7 +61,11 @@ void bootloaderFlash(const char * filename)
       flashWrite(CONVERT_UINT_PTR(FIRMWARE_ADDRESS+i+j), (uint32_t *)(buffer+j));
     }
     drawProgressBar(STR_WRITING, i, BOOTLOADER_SIZE);
-    SIMU_SLEEP(30/*ms*/);
+#if defined(SIMU)
+    // add an artificial delay and check for simu quit
+    if (SIMU_SLEEP_OR_EXIT_MS(30))
+      break;
+#endif
   }
 
   if (unlocked) {
@@ -71,3 +75,13 @@ void bootloaderFlash(const char * filename)
 
   f_close(&file);
 }
+#else
+bool isBootloader(const char * filename)
+{
+    return false;
+}
+void bootloaderFlash(const char * filename)
+{
+    
+}
+#endif

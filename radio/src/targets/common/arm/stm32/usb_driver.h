@@ -21,16 +21,23 @@
 #ifndef OPENTX_USB_DRIVER_H
 #define OPENTX_USB_DRIVER_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
 // USB driver
 enum usbMode {
   USB_UNSELECTED_MODE,
   USB_JOYSTICK_MODE,
+#if defined(USB_MSD)
   USB_MASS_STORAGE_MODE,
+#endif
   USB_SERIAL_MODE,
 #if defined(USB_SERIAL)
   USB_MAX_MODE=USB_SERIAL_MODE
+#elif defined(USB_MSD)
+  USB_MAX_MODE = USB_MASS_STORAGE_MODE
 #else
-  USB_MAX_MODE=USB_MASS_STORAGE_MODE
+  USB_MAX_MODE = USB_JOYSTICK_MODE
 #endif
 };
 
@@ -42,14 +49,15 @@ bool usbStarted();
 int getSelectedUsbMode();
 void setSelectedUsbMode(int mode);
 
+uint32_t usbSerialFreeSpace();
 void usbSerialPutc(uint8_t c);
+void serialTxBufferClear();
+bool usbTelemMirrorActive();
 
 // Used in view_statistics.cpp
 #if defined(DEBUG) && !defined(BOOT)
-  extern uint16_t usbWraps;
-  extern uint16_t charsWritten;
-  extern volatile uint32_t APP_Rx_ptr_in;
-  extern volatile uint32_t APP_Rx_ptr_out;
+extern volatile uint32_t APP_Tx_ptr_in;
+extern volatile uint32_t APP_Tx_ptr_out;
 #endif
 
 #endif

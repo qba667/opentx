@@ -20,39 +20,17 @@
 
 #include "opentx.h"
 
+enum MenuRadioVersionItems
+{
+  ITEM_RADIO_VERSION_FIRST = HEADER_LINE - 1,
+  ITEM_RADIO_VERSION_COUNT
+};
+
 void menuRadioVersion(event_t event)
 {
-#if defined(CPUARM) && defined(EEPROM_RLC)
-  if (warningResult) {
-    warningResult = 0;
-    showMessageBox(STR_STORAGE_FORMAT);
-    storageEraseAll(false);
-    NVIC_SystemReset();
-  }
-#endif
+  SIMPLE_MENU(STR_MENUVERSION, menuTabGeneral, MENU_RADIO_VERSION, ITEM_RADIO_VERSION_COUNT);
 
-  SIMPLE_MENU(STR_MENUVERSION, menuTabGeneral, MENU_RADIO_VERSION, 1);
-
-  lcdDrawTextAlignedLeft(MENU_HEADER_HEIGHT+FH, vers_stamp);
-
-#if defined(COPROCESSOR)
-  if (Coproc_valid == 1) {
-     lcdDrawTextAlignedLeft(6*FH, PSTR("CoPr:"));
-     lcdDraw8bitsNumber(10*FW, 6*FH, Coproc_read);
-  }
-  else {
-     lcdDrawTextAlignedLeft(6*FH, PSTR("CoPr: ---"));
-  }
-#elif defined(CPUARM) && defined(EEPROM_RLC)
-  lcdDrawTextAlignedLeft(MENU_HEADER_HEIGHT+5*FH+1, STR_EEBACKUP);
-  lcdDrawTextAlignedLeft(MENU_HEADER_HEIGHT+6*FH+1, STR_FACTORYRESET);
-  lcdDrawFilledRect(0, MENU_HEADER_HEIGHT+5*FH, LCD_W, 2*FH+1, SOLID);
-
-  if (event == EVT_KEY_LONG(KEY_ENTER)) {
-    eepromBackup();
-  }
-  else if (event == EVT_KEY_LONG(KEY_MENU)) {
-    POPUP_CONFIRMATION(STR_CONFIRMRESET);
-  }
-#endif
+  coord_t y = MENU_HEADER_HEIGHT + 2;
+  lcdDrawText(FW, y, vers_stamp, SMLSIZE);
+//  y += 5 * (FH - 1) + 2;
 }

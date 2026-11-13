@@ -52,7 +52,15 @@
 #define IS_KEY_REPT(evt)               (((evt) & _MSK_KEY_FLAGS) == _MSK_KEY_REPT)
 #define IS_KEY_BREAK(evt)              (((evt) & _MSK_KEY_FLAGS) == _MSK_KEY_BREAK)
 
-#if (defined(PCBHORUS) || defined(PCBTARANIS)) && defined(ROTARY_ENCODER_NAVIGATION)
+#if defined(PCBXLITE)
+  typedef uint16_t event_t;
+  #define EVT_ROTARY_BREAK             EVT_KEY_BREAK(KEY_ENTER)
+  #define EVT_ROTARY_LONG              EVT_KEY_LONG(KEY_ENTER)
+  #define EVT_ROTARY_LEFT              0xDF00
+  #define EVT_ROTARY_RIGHT             0xDE00
+  #define IS_NEXT_EVENT(event)         (event==EVT_KEY_FIRST(KEY_DOWN) || event==EVT_KEY_REPT(KEY_DOWN))
+  #define IS_PREVIOUS_EVENT(event)     (event==EVT_KEY_FIRST(KEY_UP) || event==EVT_KEY_REPT(KEY_UP))
+#elif (defined(PCBHORUS) || defined(PCBTARANIS)) && defined(ROTARY_ENCODER_NAVIGATION)
   typedef uint16_t event_t;
   #define EVT_ROTARY_BREAK             EVT_KEY_BREAK(KEY_ENTER)
   #define EVT_ROTARY_LONG              EVT_KEY_LONG(KEY_ENTER)
@@ -95,19 +103,16 @@ class Key
 extern Key keys[NUM_KEYS];
 extern event_t s_evt;
 
-#define putEvent(evt) s_evt = evt
+inline void putEvent(event_t evt)
+{
+  s_evt = evt;
+}
 
 void pauseEvents(event_t event);
 void killEvents(event_t event);
-
-#if defined(CPUARM)
-  bool clearKeyEvents();
-  event_t getEvent(bool trim=false);
-#else
-  void clearKeyEvents();
-  event_t getEvent();
-#endif
-
-uint8_t keyDown();
+void killAllEvents();
+bool waitKeysReleased();
+event_t getEvent(bool trim=false);
+bool keyDown();
 
 #endif // _KEYS_H_

@@ -4,8 +4,10 @@ set(simulation_SRCS
   radiooutputswidget.cpp
   simulateduiwidget.cpp
   simulateduiwidget9X.cpp
+  simulateduiwidgetI6X.cpp
   simulateduiwidgetX7.cpp
   simulateduiwidgetX9.cpp
+  simulateduiwidgetXLITE.cpp
   simulateduiwidgetX9E.cpp
   simulateduiwidgetX10.cpp
   simulateduiwidgetX12.cpp
@@ -23,8 +25,10 @@ set(simulation_UIS
   debugoutput.ui
   radiooutputswidget.ui
   simulateduiwidget9X.ui
+  simulateduiwidgetI6X.ui
   simulateduiwidgetX7.ui
   simulateduiwidgetX9.ui
+  simulateduiwidgetXLITE.ui
   simulateduiwidgetX9E.ui
   simulateduiwidgetX10.ui
   simulateduiwidgetX12.ui

@@ -69,21 +69,27 @@ SimulatorWidget::SimulatorWidget(QWidget * parent, SimulatorInterface * simulato
   setWindowTitle(windowName);
 
   switch(m_board) {
-    case Board::BOARD_TARANIS_X7 :
+    case Board::BOARD_TARANIS_X7:
       radioUiWidget = new SimulatedUIWidgetX7(simulator, this);
       break;
-    case Board::BOARD_TARANIS_X9D  :
-    case Board::BOARD_TARANIS_X9DP :
+    case Board::BOARD_TARANIS_X9D:
+    case Board::BOARD_TARANIS_X9DP:
       radioUiWidget = new SimulatedUIWidgetX9(simulator, this);
       break;
-    case Board::BOARD_TARANIS_X9E :
+    case Board::BOARD_TARANIS_XLITE:
+      radioUiWidget = new SimulatedUIWidgetXLITE(simulator, this);
+      break;
+    case Board::BOARD_TARANIS_X9E:
       radioUiWidget = new SimulatedUIWidgetX9E(simulator, this);
       break;
-    case Board::BOARD_X12S :
+    case Board::BOARD_X12S:
       radioUiWidget = new SimulatedUIWidgetX12(simulator, this);
       break;
-    case Board::BOARD_X10 :
+    case Board::BOARD_X10:
       radioUiWidget = new SimulatedUIWidgetX10(simulator, this);
+      break;
+    case Board::BOARD_I6X:
+      radioUiWidget = new SimulatedUIWidgetI6X(simulator, this);
       break;
     default:
       radioUiWidget = new SimulatedUIWidget9X(simulator, this);
@@ -105,7 +111,7 @@ SimulatorWidget::SimulatorWidget(QWidget * parent, SimulatorInterface * simulato
   vJoyLeft = new VirtualJoystickWidget(this, 'L');
   ui->leftStickLayout->addWidget(vJoyLeft);
 
-  vJoyRight = new VirtualJoystickWidget(this, 'R');
+  vJoyRight = new VirtualJoystickWidget(this, 'R', (m_board == Board::BOARD_TARANIS_XLITE ? false : true));  // TODO: maybe remove trims for both joysticks and add a cross in the middle?
   ui->rightStickLayout->addWidget(vJoyRight);
 
   connect(vJoyLeft, &VirtualJoystickWidget::valueChange, this, &SimulatorWidget::onRadioWidgetValueChange);
@@ -216,8 +222,8 @@ bool SimulatorWidget::setStartupData(const QByteArray & dataSource, bool fromFil
   // Supposedly we're being given a file name to use, try that out.
   else if (fromFile && !fileName.isEmpty()) {
     Storage store = Storage(fileName);
-    ret = store.load(simuData);
-    if (!ret && QFile(fileName).exists()) {
+    ret = companionReadsData ? store.load(simuData) : 0;
+    if (!ret && QFile(fileName).exists() && companionReadsData) {
       error = store.error();
     }
     else {
@@ -238,7 +244,7 @@ bool SimulatorWidget::setStartupData(const QByteArray & dataSource, bool fromFil
   }
   // Assume a byte array of radio data was passed, load it.
   else if (!dataSource.isEmpty()) {
-    ret = firmware->getEEpromInterface()->load(simuData, (uint8_t *)dataSource.constData(), getEEpromSize(m_board));
+    ret = firmware->getEEpromInterface()->load(simuData, (uint8_t *)dataSource.constData(), Boards::getEEpromSize(m_board));
     startupData = dataSource;  // save the data for start()
   }
   // we're :-(
@@ -290,6 +296,12 @@ bool SimulatorWidget::setRadioData(RadioData * radioData)
 bool SimulatorWidget::setOptions(SimulatorOptions & options, bool withSave)
 {
   bool ret = false;
+
+  // Companion can only parse radio data in the format of its profile firmware, and only for
+  // radios it has a data layout for. Otherwise the radio firmware reads and writes its own
+  // data file.
+  companionReadsData = (options.firmwareId.isEmpty() || firmware->getFirmwareBase()->getId() == options.firmwareId)
+                       && !IS_I6X(m_board);  // no I6X radio data layout in Companion
 
   setSdPath(options.sdPath);
 
@@ -371,7 +383,7 @@ bool SimulatorWidget::saveTempData()
             fh.close();
         }
 
-        if (!firmware->getEEpromInterface()->load(radioData, (uint8_t *)startupData.constData(), getEEpromSize(m_board))) {
+        if (!firmware->getEEpromInterface()->load(radioData, (uint8_t *)startupData.constData(), Boards::getEEpromSize(m_board))) {
           error = tr("Error saving data: could not get data from simulator interface.");
         }
         else {
@@ -486,7 +498,7 @@ void SimulatorWidget::onSimulatorStopped()
   m_heartbeatTimer.invalidate();
 
   if (simulator && !simulator->isRunning() && saveTempRadioData) {
-    startupData.fill(0, getEEpromSize(m_board));
+    startupData.fill(0, Boards::getEEpromSize(m_board));
     simulator->readRadioData(startupData);
   }
 }
@@ -684,9 +696,7 @@ void SimulatorWidget::restoreRadioWidgetsState()
   emit stickModeChange(radioSettings.stickMode);
 
   // TODO : custom voltages
-  qint16 volts = radioSettings.vBatWarn + 2;
-  if (firmware->getCapability(Capability::HasBatMeterRange))
-    volts = (radioSettings.vBatMin + 90) + ((radioSettings.vBatMax + 30) - radioSettings.vBatMin) / 2;
+  qint16 volts = radioSettings.vBatWarn + 20; // 1V above min
   emit inputValueChange(SimulatorInterface::INPUT_SRC_TXVIN, 0, volts);
 }
 

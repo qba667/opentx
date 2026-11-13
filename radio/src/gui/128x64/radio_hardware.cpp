@@ -20,87 +20,26 @@
 
 #include "opentx.h"
 
-#if defined(PCBSKY9X)
-#define HW_SETTINGS_COLUMN (2+(15*FW))
-enum MenuRadioHardwareItems {
-  ITEM_RADIO_HARDWARE_OPTREX_DISPLAY,
-  ITEM_RADIO_HARDWARE_STICKS_GAINS_LABELS,
-  ITEM_RADIO_HARDWARE_STICK_LV_GAIN,
-  ITEM_RADIO_HARDWARE_STICK_LH_GAIN,
-  ITEM_RADIO_HARDWARE_STICK_RV_GAIN,
-  ITEM_RADIO_HARDWARE_STICK_RH_GAIN,
-  IF_ROTARY_ENCODERS(ITEM_RADIO_HARDWARE_ROTARY_ENCODER)
-  CASE_BLUETOOTH(ITEM_RADIO_HARDWARE_BT_BAUDRATE)
-  ITEM_RADIO_HARDWARE_MAX
-};
+#define HW_SETTINGS_COLUMN1            30
+#define HW_SETTINGS_COLUMN2            (HW_SETTINGS_COLUMN1 + 5*FW)
+#define HW_SETTINGS_COLUMN3            HW_SETTINGS_COLUMN2 + FW
 
-void menuRadioHardware(event_t event)
-{
-  MENU(STR_HARDWARE, menuTabGeneral, MENU_RADIO_HARDWARE, ITEM_RADIO_HARDWARE_MAX+1, {0, 0, (uint8_t)-1, 0, 0, 0, IF_ROTARY_ENCODERS(0) CASE_BLUETOOTH(0)});
-
-  uint8_t sub = menuVerticalPosition - 1;
-
-  for (uint8_t i=0; i<LCD_LINES-1; i++) {
-    coord_t y = MENU_HEADER_HEIGHT + 1 + i*FH;
-    uint8_t k = i+menuVerticalOffset;
-    uint8_t blink = ((s_editMode>0) ? BLINK|INVERS : INVERS);
-    uint8_t attr = (sub == k ? blink : 0);
-
-    switch(k) {
-      case ITEM_RADIO_HARDWARE_OPTREX_DISPLAY:
-        g_eeGeneral.optrexDisplay = editChoice(HW_SETTINGS_COLUMN, y, STR_LCD, STR_VLCD, g_eeGeneral.optrexDisplay, 0, 1, attr, event);
-        break;
-
-      case ITEM_RADIO_HARDWARE_STICKS_GAINS_LABELS:
-        lcdDrawTextAlignedLeft(y, PSTR("Sticks"));
-        break;
-
-      case ITEM_RADIO_HARDWARE_STICK_LV_GAIN:
-      case ITEM_RADIO_HARDWARE_STICK_LH_GAIN:
-      case ITEM_RADIO_HARDWARE_STICK_RV_GAIN:
-      case ITEM_RADIO_HARDWARE_STICK_RH_GAIN:
-      {
-        lcdDrawTextAtIndex(INDENT_WIDTH, y, PSTR("\002LVLHRVRH"), k-ITEM_RADIO_HARDWARE_STICK_LV_GAIN, 0);
-        lcdDrawText(INDENT_WIDTH+3*FW, y, PSTR("Gain"));
-        uint8_t mask = (1<<(k-ITEM_RADIO_HARDWARE_STICK_LV_GAIN));
-        uint8_t val = (g_eeGeneral.sticksGain & mask ? 1 : 0);
-        lcdDrawChar(HW_SETTINGS_COLUMN, y, val ? '2' : '1', attr);
-        if (attr) {
-          CHECK_INCDEC_GENVAR(event, val, 0, 1);
-          if (checkIncDec_Ret) {
-            g_eeGeneral.sticksGain ^= mask;
-            setSticksGain(g_eeGeneral.sticksGain);
-          }
-        }
-        break;
-      }
-
-#if defined(ROTARY_ENCODERS)
-      case ITEM_RADIO_HARDWARE_ROTARY_ENCODER:
-        g_eeGeneral.rotarySteps = editChoice(HW_SETTINGS_COLUMN, y, PSTR("Rotary Encoder"), PSTR("\0062steps4steps"), g_eeGeneral.rotarySteps, 0, 1, attr, event);
-        break;
+#if defined(BATTGRAPH)
+  #define CASE_BATTGRAPH(x) x,
+#else
+  #define CASE_BATTGRAPH(x)
 #endif
 
-#if defined(BLUETOOTH)
-      case ITEM_RADIO_HARDWARE_BT_BAUDRATE:
-        g_eeGeneral.bluetoothBaudrate = editChoice(HW_SETTINGS_COLUMN, y, STR_BAUDRATE, PSTR("\005115k 9600 19200"), g_eeGeneral.bluetoothBaudrate, 0, 2, attr, event);
-        if (attr && checkIncDec_Ret) {
-          btInit();
-        }
-        break;
-#endif
-    }
-  }
-}
-#endif // PCBSKY9X
-
-#if defined(PCBTARANIS)
-enum MenuRadioHardwareItems {
-  ITEM_RADIO_HARDWARE_LABEL_STICKS,
+#if defined(PCBTARANIS) || defined(PCBI6X)
+enum {
+  ITEM_RADIO_HARDWARE_LABEL_STICKS = 0,
   ITEM_RADIO_HARDWARE_STICK1,
   ITEM_RADIO_HARDWARE_STICK2,
   ITEM_RADIO_HARDWARE_STICK3,
   ITEM_RADIO_HARDWARE_STICK4,
+#if defined(STICK_DEAD_ZONE)
+  ITEM_RADIO_HARDWARE_STICK_DEADZONE,
+#endif
   ITEM_RADIO_HARDWARE_LABEL_POTS,
   ITEM_RADIO_HARDWARE_POT1,
   ITEM_RADIO_HARDWARE_POT2,
@@ -109,11 +48,16 @@ enum MenuRadioHardwareItems {
   ITEM_RADIO_HARDWARE_SB,
   ITEM_RADIO_HARDWARE_SC,
   ITEM_RADIO_HARDWARE_SD,
-#if NUM_SWITCHES > 4
-  ITEM_RADIO_HARDWARE_SF,
-  ITEM_RADIO_HARDWARE_SH,
+#if NUM_SWITCHES >= 5
+  ITEM_RADIO_HARDWARE_SE,
 #endif
+#if NUM_SWITCHES >= 6
+  ITEM_RADIO_HARDWARE_SF,
+#endif
+  CASE_BATTGRAPH(ITEM_RADIO_HARDWARE_BATT_RANGE)
+  ITEM_RADIO_HARDWARE_BATTERY_CALIB,
   ITEM_RADIO_HARDWARE_SERIAL_BAUDRATE,
+  ITEM_RADIO_HARDWARE_CRSF_FULLDUPLEX,
 #if defined(BLUETOOTH)
   ITEM_RADIO_HARDWARE_BLUETOOTH_MODE,
   ITEM_RADIO_HARDWARE_BLUETOOTH_PAIRING_CODE,
@@ -121,46 +65,113 @@ enum MenuRadioHardwareItems {
   ITEM_RADIO_HARDWARE_BLUETOOTH_DISTANT_ADDR,
   ITEM_RADIO_HARDWARE_BLUETOOTH_NAME,
 #endif
+  ITEM_RADIO_HARDWARE_SERIAL_PORT_LABEL,
+#if defined(AUX_SERIAL)
+  ITEM_RADIO_HARDWARE_AUX_SERIAL_MODE,
+#endif
+#if defined(USB_SERIAL)
+  ITEM_RADIO_HARDWARE_USB_SERIAL_MODE,
+#endif
   ITEM_RADIO_HARDWARE_JITTER_FILTER,
+#if defined(MENU_DIAG_ANAS_KEYS)
+  ITEM_RADIO_HARDWARE_DEBUG,
+#endif
+#if defined(EEPROM_RLC)
+#if defined(SDCARD)
+  ITEM_RADIO_BACKUP_EEPROM,
+#endif
+  ITEM_RADIO_FACTORY_RESET,
+#endif
   ITEM_RADIO_HARDWARE_MAX
 };
 
-#define POTS_ROWS                      NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1
-
-#if NUM_SWITCHES > 4
-#define SWITCHES_ROWS                  NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1
+#if defined(PCBX3)
+#define POTS_ROWS                      NAVIGATION_LINE_BY_LINE|1
 #else
+#define POTS_ROWS                      NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1
+#endif
+
+#if NUM_SWITCHES == 6
+#define SWITCHES_ROWS                  NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1
+#elif NUM_SWITCHES == 5
+#define SWITCHES_ROWS                  NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1
+#elif NUM_SWITCHES == 4
 #define SWITCHES_ROWS                  NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1, NAVIGATION_LINE_BY_LINE|1
 #endif
 
-#if defined(PCBTARANIS)
-#define BLUETOOTH_ROWS                 uint8_t(btChipPresent ? 0 : HIDDEN_ROW), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_TELEMETRY ? -1 : HIDDEN_ROW), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : -1), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : -1), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : 0),
+#if defined(PCBX3)
+  #define BLUETOOTH_ROWS
+#elif defined(PCBTARANIS)
+#define BLUETOOTH_ROWS                 uint8_t(IS_BLUETOOTH_CHIP_PRESENT() ? 0 : HIDDEN_ROW), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_TELEMETRY ? -1 : HIDDEN_ROW), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : -1), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : -1), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : 0),
 #elif defined(BLUETOOTH)
 #define BLUETOOTH_ROWS                 0, uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : -1), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : -1), uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? HIDDEN_ROW : 0),
 #else
 #define BLUETOOTH_ROWS
 #endif
-#if defined(PCBXLITE)
-#define SWITCH_TYPE_MAX(sw)            ((MIXSRC_SC-MIXSRC_FIRST_SWITCH == sw || MIXSRC_SD-MIXSRC_FIRST_SWITCH == sw) ? SWITCH_2POS : SWITCH_3POS)
+#if defined(PCBXLITE) || defined(PCBI6X)
+#define SWITCH_TYPE_MAX(sw)            (SWITCH_3POS)
 #else
 #define SWITCH_TYPE_MAX(sw)            ((MIXSRC_SF-MIXSRC_FIRST_SWITCH == sw || MIXSRC_SH-MIXSRC_FIRST_SWITCH == sw) ? SWITCH_2POS : SWITCH_3POS)
 #endif
 
-#define HW_SETTINGS_COLUMN1            30
-#define HW_SETTINGS_COLUMN2            (30 + 5*FW)
+#if defined(EEPROM_RLC)
+void onFactoryResetConfirm(const char result)
+{
+  if (result) {
+    warningResult = 0;
+    showMessageBox(STR_STORAGE_FORMAT);
+    storageEraseAll(false);
+    NVIC_SystemReset();
+  }
+}
+#endif
 
 void menuRadioHardware(event_t event)
 {
-  MENU(STR_HARDWARE, menuTabGeneral, MENU_RADIO_HARDWARE, HEADER_LINE+ITEM_RADIO_HARDWARE_MAX, { HEADER_LINE_COLUMNS LABEL(Sticks), 0, 0, 0, 0, LABEL(Pots), POTS_ROWS, LABEL(Switches), SWITCHES_ROWS, 0, BLUETOOTH_ROWS 0 });
+  MENU(STR_HARDWARE, menuTabGeneral, MENU_RADIO_HARDWARE, HEADER_LINE + ITEM_RADIO_HARDWARE_MAX, {
+    HEADER_LINE_COLUMNS
+    0 /* calibration button */,
+      0 /* stick 1 */,
+      0 /* stick 2 */,
+      0 /* stick 3 */,
+      0 /* stick 4 */,
+#if defined(STICK_DEAD_ZONE)
+      0 /* stick deadzone */,
+#endif
+    LABEL(Pots),
+      POTS_ROWS,
+    LABEL(Switches),
+      SWITCHES_ROWS,
+    CASE_BATTGRAPH(1) 
+    0 /* battery calib */,
+#if defined(CROSSFIRE)
+    0 /* max bauds */,
+    0 /* CRSF full duplex */,
+#endif
+    LABEL(Serial ports),
+#if defined(AUX_SERIAL)
+      0 /* Aux serial mode */,
+#endif
+#if defined(USB_SERIAL)
+      0 /* USB serial mode */,
+#endif
+    BLUETOOTH_ROWS
+    0 /*jitter filter*/,
+#if defined(MENU_DIAG_ANAS_KEYS)
+    1 /* debugs */,
+#endif
+    0 /* factory reset */
+  });
 
   uint8_t sub = menuVerticalPosition - HEADER_LINE;
 
-  for (uint8_t i=0; i<LCD_LINES-1; i++) {
+  for (uint32_t i=0; i<NUM_BODY_LINES; i++) {
     coord_t y = MENU_HEADER_HEIGHT + 1 + i*FH;
     uint8_t k = i+menuVerticalOffset;
     for (int j=0; j<=k; j++) {
-      if (mstate_tab[j] == HIDDEN_ROW)
+      if (mstate_tab[j+HEADER_LINE] == HIDDEN_ROW) {
         k++;
+      }
     }
     uint8_t blink = ((s_editMode>0) ? BLINK|INVERS : INVERS);
     uint8_t attr = (sub == k ? blink : 0);
@@ -168,6 +179,10 @@ void menuRadioHardware(event_t event)
     switch(k) {
       case ITEM_RADIO_HARDWARE_LABEL_STICKS:
         lcdDrawTextAlignedLeft(y, STR_STICKS);
+        lcdDrawText(HW_SETTINGS_COLUMN2, y, STR_CALIB_BTN, attr);
+        if (attr && event == EVT_KEY_FIRST(KEY_ENTER)) {
+          pushMenu(menuRadioCalibration);
+        }
         break;
       case ITEM_RADIO_HARDWARE_STICK1:
       case ITEM_RADIO_HARDWARE_STICK2:
@@ -186,7 +201,7 @@ void menuRadioHardware(event_t event)
         int idx = k - ITEM_RADIO_HARDWARE_POT1;
         uint8_t shift = (2*idx);
         uint8_t mask = (0x03 << shift);
-        lcdDrawTextAtIndex(INDENT_WIDTH, y, STR_VSRCRAW, NUM_STICKS+idx+1, menuHorizontalPosition < 0 ? attr : 0);
+        lcdDrawTextAtIndex(INDENT_WIDTH, y, STR_VSRCRAW, NUM_STICKS+idx+1, /*menuHorizontalPosition < 0 ? attr :*/ 0);
         if (ZEXIST(g_eeGeneral.anaNames[NUM_STICKS+idx]) || (attr && s_editMode > 0 && menuHorizontalPosition == 0))
           editName(HW_SETTINGS_COLUMN1, y, g_eeGeneral.anaNames[NUM_STICKS+idx], LEN_ANA_NAME, event, attr && menuHorizontalPosition == 0);
         else
@@ -206,14 +221,16 @@ void menuRadioHardware(event_t event)
       case ITEM_RADIO_HARDWARE_SB:
       case ITEM_RADIO_HARDWARE_SC:
       case ITEM_RADIO_HARDWARE_SD:
-#if NUM_SWITCHES > 4
+#if NUM_SWITCHES >= 5
+      case ITEM_RADIO_HARDWARE_SE:
+#endif
+#if NUM_SWITCHES >= 6
       case ITEM_RADIO_HARDWARE_SF:
-      case ITEM_RADIO_HARDWARE_SH:
 #endif
       {
         int index = k-ITEM_RADIO_HARDWARE_SA;
         int config = SWITCH_CONFIG(index);
-        lcdDrawTextAtIndex(INDENT_WIDTH, y, STR_VSRCRAW, MIXSRC_FIRST_SWITCH-MIXSRC_Rud+index+1, menuHorizontalPosition < 0 ? attr : 0);
+        lcdDrawTextAtIndex(INDENT_WIDTH, y, STR_VSRCRAW, MIXSRC_FIRST_SWITCH-MIXSRC_Rud+index+1, /*menuHorizontalPosition < 0 ? attr :*/ 0);
         if (ZEXIST(g_eeGeneral.switchNames[index]) || (attr && s_editMode > 0 && menuHorizontalPosition == 0))
           editName(HW_SETTINGS_COLUMN1, y, g_eeGeneral.switchNames[index], LEN_SWITCH_NAME, event, menuHorizontalPosition == 0 ? attr : 0);
         else
@@ -226,16 +243,39 @@ void menuRadioHardware(event_t event)
         break;
       }
 
-      case ITEM_RADIO_HARDWARE_SERIAL_BAUDRATE:
-        lcdDrawTextAlignedLeft(y, STR_MAXBAUDRATE);
-        lcdDrawNumber(HW_SETTINGS_COLUMN2, y, CROSSFIRE_BAUDRATES[g_eeGeneral.telemetryBaudrate], attr|LEFT);
+#if defined(BATTGRAPH)
+      case ITEM_RADIO_HARDWARE_BATT_RANGE:
+        lcdDrawTextAlignedLeft(y, STR_BATTERY_RANGE);
+        putsVolts(HW_SETTINGS_COLUMN3, y, 90+g_eeGeneral.vBatMin, (menuHorizontalPosition==0 ? attr : 0)|NO_UNIT);
+        lcdDrawChar(lcdNextPos, y, '-');
+        putsVolts(lcdNextPos, y, 120+g_eeGeneral.vBatMax, (menuHorizontalPosition>0 ? attr : 0)|NO_UNIT);
+        if (attr && s_editMode>0) {
+          if (menuHorizontalPosition==0)
+            CHECK_INCDEC_GENVAR(event, g_eeGeneral.vBatMin, -60, g_eeGeneral.vBatMax+29); // min=3.0V
+          else
+            CHECK_INCDEC_GENVAR(event, g_eeGeneral.vBatMax, g_eeGeneral.vBatMin-29, +40); // max=16.0V
+        }
+        break;
+#endif
+
+      case ITEM_RADIO_HARDWARE_BATTERY_CALIB:
+        lcdDrawTextAlignedLeft(y, STR_BATT_CALIB);
+        putsVolts(HW_SETTINGS_COLUMN3, y, getBatteryVoltage(), attr|PREC2|LEFT);
         if (attr) {
-          g_eeGeneral.telemetryBaudrate = DIM(CROSSFIRE_BAUDRATES) - 1 - checkIncDecModel(event, DIM(CROSSFIRE_BAUDRATES) - 1 - g_eeGeneral.telemetryBaudrate, 0, DIM(CROSSFIRE_BAUDRATES) - 1);
-          if (checkIncDec_Ret) {
+          CHECK_INCDEC_GENVAR(event, g_eeGeneral.txVoltageCalibration, -127, 127);
+        }
+        break;
+
+#if defined(CROSSFIRE)
+      case ITEM_RADIO_HARDWARE_SERIAL_BAUDRATE:
+        g_eeGeneral.telemetryBaudrate = editChoice(HW_SETTINGS_COLUMN3, y, STR_MAXBAUDRATE, "\005400k 115k 921k 1.87M3.75M5.25M", g_eeGeneral.telemetryBaudrate, 0, DIM(CROSSFIRE_BAUDRATES) - 1, attr, event);
+        if (attr) {
+          storageDirty(EE_GENERAL);
+          if (checkIncDec_Ret && IS_EXTERNAL_MODULE_ON()) {
             pauseMixerCalculations();
             pausePulses();
             EXTERNAL_MODULE_OFF();
-            CoTickDelay(10); // 20ms so that the pulses interrupt will reinit the frame rate
+            sleep_ms(20); // 20ms so that the pulses interrupt will reinit the frame rate
             telemetryProtocol = 255; // force telemetry port + module reinitialization
             EXTERNAL_MODULE_ON();
             resumePulses();
@@ -243,46 +283,87 @@ void menuRadioHardware(event_t event)
           }
         }
         break;
+#endif
 
-#if defined(BLUETOOTH)
-      case ITEM_RADIO_HARDWARE_BLUETOOTH_MODE:
-        lcdDrawTextAlignedLeft(y, STR_BLUETOOTH);
-        lcdDrawTextAtIndex(HW_SETTINGS_COLUMN2, y, STR_BLUETOOTH_MODES, g_eeGeneral.bluetoothMode, attr);
-        if ((g_eeGeneral.bluetoothMode != BLUETOOTH_OFF) && !btChipPresent) {
-          g_eeGeneral.bluetoothMode = BLUETOOTH_OFF;
+      case ITEM_RADIO_HARDWARE_SERIAL_PORT_LABEL:
+        lcdDrawTextAlignedLeft(y, STR_AUX_SERIAL_MODE);
+        break;
+
+#if defined(AUX_SERIAL)
+      case ITEM_RADIO_HARDWARE_AUX_SERIAL_MODE:
+        g_eeGeneral.auxSerialMode = editChoice(HW_SETTINGS_COLUMN2, y, "AUX1", STR_AUX_SERIAL_MODES, g_eeGeneral.auxSerialMode, 0, UART_MODE_MAX, attr, event, INDENT_WIDTH);
+        if (attr && checkIncDec_Ret) {
+          auxSerialInit(g_eeGeneral.auxSerialMode, modelTelemetryProtocol());
+          // storageDirty(EE_GENERAL);
         }
-        if (attr) {
-          g_eeGeneral.bluetoothMode = checkIncDecGen(event, g_eeGeneral.bluetoothMode, BLUETOOTH_OFF, BLUETOOTH_TRAINER);
+        break;
+#endif
+
+#if defined(USB_SERIAL)
+      case ITEM_RADIO_HARDWARE_USB_SERIAL_MODE:
+        g_eeGeneral.usbSerialMode = editChoice(HW_SETTINGS_COLUMN2, y, "USB-VCP", STR_USB_SERIAL_MODES, g_eeGeneral.usbSerialMode, USB_SERIAL_MODE_OFF, USB_SERIAL_MODE_MAX, attr, event, INDENT_WIDTH);
+        break;
+#endif
+
+#if defined(CROSSFIRE)
+      case ITEM_RADIO_HARDWARE_CRSF_FULLDUPLEX:
+        g_eeGeneral.crsfFullDuplex = editCheckBox(g_eeGeneral.crsfFullDuplex, HW_SETTINGS_COLUMN3, y, "CRSF Duplex", attr, event);
+        if (attr && checkIncDec_Ret) {
+          storageDirty(EE_GENERAL);
         }
-        break;
-
-      case ITEM_RADIO_HARDWARE_BLUETOOTH_PAIRING_CODE:
-        lcdDrawTextAlignedLeft(y, STR_BLUETOOTH_PIN_CODE);
-        lcdDrawText(HW_SETTINGS_COLUMN2, y, "0000");
-        break;
-
-      case ITEM_RADIO_HARDWARE_BLUETOOTH_LOCAL_ADDR:
-        lcdDrawTextAlignedLeft(y, STR_BLUETOOTH_LOCAL_ADDR);
-        lcdDrawText(HW_SETTINGS_COLUMN2, y, bluetoothLocalAddr[0] == '\0' ? "---" : bluetoothLocalAddr);
-        break;
-
-      case ITEM_RADIO_HARDWARE_BLUETOOTH_DISTANT_ADDR:
-        lcdDrawTextAlignedLeft(y, STR_BLUETOOTH_DIST_ADDR);
-        lcdDrawText(HW_SETTINGS_COLUMN2, y, bluetoothDistantAddr[0] == '\0' ? "---" : bluetoothDistantAddr);
-        break;
-
-      case ITEM_RADIO_HARDWARE_BLUETOOTH_NAME:
-        lcdDrawText(INDENT_WIDTH, y, STR_NAME);
-        editName(HW_SETTINGS_COLUMN2, y, g_eeGeneral.bluetoothName, LEN_BLUETOOTH_NAME, event, attr);
         break;
 #endif
 
       case ITEM_RADIO_HARDWARE_JITTER_FILTER:
-      {
-        uint8_t b = 1-g_eeGeneral.jitterFilter;
-        g_eeGeneral.jitterFilter = 1 - editCheckBox(b, HW_SETTINGS_COLUMN2, y, STR_JITTER_FILTER, attr, event);
+        g_eeGeneral.jitterFilter = 1 - editCheckBox(1 - g_eeGeneral.jitterFilter, HW_SETTINGS_COLUMN3, y, STR_JITTER_FILTER, attr, event);
+        if (attr && checkIncDec_Ret) {
+          storageDirty(EE_GENERAL);
+        }
         break;
-      }
+
+#if defined(STICK_DEAD_ZONE)
+      case ITEM_RADIO_HARDWARE_STICK_DEADZONE:
+        g_eeGeneral.stickDeadZone = editChoice(HW_SETTINGS_COLUMN2, y, STR_STICK_DEADZONE, "\002 0 2 4 8163264", g_eeGeneral.stickDeadZone, 0, 6, attr, event, INDENT_WIDTH);
+//        if (attr && checkIncDec_Ret) {
+//          storageDirty(EE_GENERAL);
+//        }
+        break;
+#endif
+
+#if defined(MENU_DIAG_ANAS_KEYS)
+      case ITEM_RADIO_HARDWARE_DEBUG:
+        lcdDrawTextAlignedLeft(y, STR_DEBUG);
+        lcdDrawText(HW_SETTINGS_COLUMN2, y, STR_ANALOGS_BTN, menuHorizontalPosition == 0 ? attr : 0);
+        lcdDrawText(lcdLastRightPos + 2, y, STR_KEYS_BTN, menuHorizontalPosition == 1 ? attr : 0);
+        if (attr && event == EVT_KEY_FIRST(KEY_ENTER)) {
+          if (menuHorizontalPosition == 0)
+            pushMenu(menuRadioDiagAnalogs);
+          else
+            pushMenu(menuRadioDiagKeys);
+        }
+        break;
+#endif // MENU_DIAG_ANAS_KEYS
+#if defined(SDCARD)
+      case ITEM_RADIO_BACKUP_EEPROM:
+        lcdDrawTextAlignedLeft(y, BUTTON(STR_EEBACKUP), attr);
+        if (attr && event == EVT_KEY_FIRST(KEY_ENTER)) {
+          s_editMode = EDIT_SELECT_FIELD;
+          eepromBackup();
+        }
+        break;
+#endif
+      case ITEM_RADIO_FACTORY_RESET:
+        onFactoryResetConfirm(warningResult);
+        if (LCD_W < 212)
+          lcdDrawText(LCD_W / 2, y, BUTTON(TR_FACTORYRESET), attr | CENTERED);
+        else
+          lcdDrawText(HW_SETTINGS_COLUMN2, y, BUTTON(TR_FACTORYRESET), attr);
+        if (attr && event == EVT_KEY_BREAK(KEY_ENTER)) {
+          s_editMode = EDIT_SELECT_FIELD;
+//          POPUP_CONFIRMATION(STR_CONFIRMRESET, onFactoryResetConfirm);
+          POPUP_CONFIRMATION(STR_CONFIRMRESET);
+       }
+        break;
     }
   }
 }

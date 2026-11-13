@@ -21,11 +21,21 @@
 #ifndef _FLYSKY_IBUS_H
 #define _FLYSKY_IBUS_H
 
+#include <stdint.h>
+
+#if defined(MULTIMODULE)
 void processFlySkyTelemetryData(uint8_t data);
+#endif
+
+#if defined(AFHDS2A)
+void flyskyProcessFrame(uint8_t * frame);
+#endif
+
 void flySkySetDefault(int index, uint16_t id, uint8_t subId, uint8_t instance);
 
 // Used by multi protocol
-void processFlySkyPacket(const uint8_t *packet);
+void processFlySkyPacket(const uint8_t * packet);
 
+void processFlySkyPacketAC(const uint8_t * packet);
 
 #endif

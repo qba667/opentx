@@ -82,7 +82,7 @@ Open9xSim::Open9xSim(FXApp* a):
   FXMainWindow(a, "OpenTX Simu", NULL, NULL, DECOR_ALL, 20, 90, 0, 0)
 {
   firstTime = true;
-  memset(displayBuf, 0, DISPLAY_BUFFER_SIZE);
+  memset(displayBuf, 0, DISPLAY_BUFFER_SIZE * sizeof(display_t));
   bmp = new FXPPMImage(getApp(),NULL,IMAGE_OWNED|IMAGE_KEEP|IMAGE_SHMI|IMAGE_SHMP, W2, H2);
 
 #if defined(SIMU_AUDIO)
@@ -251,7 +251,7 @@ void Open9xSim::updateKeysAndSwitches(bool start)
     KEY_Right,     KEY_RIGHT,
     KEY_Left,      KEY_LEFT,
 #elif defined(PCBXLITE)
-    KEY_Page_Up,   KEY_MENU,
+    KEY_Shift_L,   KEY_SHIFT,
     KEY_Return,    KEY_ENTER,
     KEY_BackSpace, KEY_EXIT,
     KEY_Right,     KEY_RIGHT,
@@ -359,11 +359,6 @@ long Open9xSim::onTimeout(FXObject*, FXSelector, void*)
 #if defined(COPROCESSOR)
     Coproc_temp = 23;
     Coproc_maxtemp = 28;
-#endif
-
-#if defined(PCBSKY9X)
-    temperature = 31;
-    maxTemperature = 42;
 #endif
 
     updateKeysAndSwitches();
@@ -578,17 +573,12 @@ uint16_t anaIn(uint8_t chan)
 #elif defined(PCBX9E)
   else if (chan == TX_VOLTAGE)
     return 1420;      //~10.6V
+#elif defined(PCBXLITE)
+  else if (chan == TX_VOLTAGE)
+    return 1100;
 #elif defined(PCBTARANIS)
   else if (chan == TX_VOLTAGE)
     return 1000;      //~7.4V
-#elif defined(PCBSKY9X)
-  else if (chan == TX_VOLTAGE)
-    return 5.1*1500/11.3;
-  else if (chan == TX_CURRENT)
-    return 100;
-#elif defined(PCBGRUVIN9X)
-  else if (chan == TX_VOLTAGE)
-    return 150;
 #else
   else if (chan == TX_VOLTAGE)
     return 1500;

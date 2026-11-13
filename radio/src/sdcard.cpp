@@ -68,7 +68,7 @@ const char * sdCheckAndCreateDirectory(const char * path)
     f_closedir(&archiveFolder);
   }
 
-  return NULL;
+  return nullptr;
 }
 
 bool isFileAvailable(const char * path, bool exclDir)
@@ -95,7 +95,7 @@ bool isFileAvailable(const char * path, bool exclDir)
   @param match Optional container to hold the matched file extension (wide enough to hold LEN_FILE_EXTENSION_MAX + 1).
   @retval true if a file was found, false otherwise.
 */
-bool isFilePatternAvailable(const char * path, const char * file, const char * pattern = NULL, bool exclDir = true, char * match = NULL)
+bool isFilePatternAvailable(const char * path, const char * file, const char * pattern = nullptr, bool exclDir = true, char * match = nullptr)
 {
   uint8_t fplen;
   char fqfp[LEN_FILE_PATH_MAX + _MAX_LFN + 1] = "\0";
@@ -110,7 +110,7 @@ bool isFilePatternAvailable(const char * path, const char * file, const char * p
   strcpy(fqfp + fplen, "/");
   strncat(fqfp + (++fplen), file, _MAX_LFN);
 
-  if (pattern == NULL) {
+  if (pattern == nullptr) {
     // no extensions list, just check the filename as-is
     return isFileAvailable(fqfp, exclDir);
   }
@@ -129,13 +129,13 @@ bool isFilePatternAvailable(const char * path, const char * file, const char * p
     while (plen > 0 && ext) {
       strncat(fqfp + len, ext, extlen);
       if (isFileAvailable(fqfp, exclDir)) {
-        if (match != NULL) strncat(&(match[0]='\0'), ext, extlen);
+        if (match != nullptr) strncat(&(match[0]='\0'), ext, extlen);
         return true;
       }
       plen -= extlen;
       if (plen > 0) {
         fqfp[len] = '\0';
-        ext = getFileExtension(pattern, plen, 0, NULL, &extlen);
+        ext = getFileExtension(pattern, plen, 0, nullptr, &extlen);
       }
     }
   }
@@ -147,7 +147,7 @@ char * getFileIndex(char * filename, unsigned int & value)
   value = 0;
   char * pos = (char *)getFileExtension(filename);
   if (!pos || pos == filename)
-    return NULL;
+    return nullptr;
   int multiplier = 1;
   while (pos > filename) {
     pos--;
@@ -179,7 +179,7 @@ int findNextFileIndex(char * filename, uint8_t size, const char * directory)
   uint8_t extlen;
   char * indexPos = getFileIndex(filename, index);
   char extension[LEN_FILE_EXTENSION_MAX+1] = "\0";
-  char * p = (char *)getFileExtension(filename, 0, 0, NULL, &extlen);
+  char * p = (char *)getFileExtension(filename, 0, 0, nullptr, &extlen);
   if (p) strncat(extension, p, sizeof(extension)-1);
   while (1) {
     index++;
@@ -188,7 +188,7 @@ int findNextFileIndex(char * filename, uint8_t size, const char * directory)
     }
     char * pos = strAppendUnsigned(indexPos, index);
     strAppend(pos, extension);
-    if (!isFilePatternAvailable(directory, filename, NULL, false)) {
+    if (!isFilePatternAvailable(directory, filename, nullptr, false)) {
       return index;
     }
   }
@@ -239,12 +239,12 @@ bool isExtensionMatching(const char * extension, const char * pattern, char * ma
   plen = (int)fnlen;
   while (plen > 0 && ext) {
     if (!strncasecmp(extension, ext, extlen)) {
-      if (match != NULL) strncat(&(match[0]='\0'), ext, extlen);
+      if (match != nullptr) strncat(&(match[0]='\0'), ext, extlen);
       return true;
     }
     plen -= extlen;
     if (plen > 0) {
-      ext = getFileExtension(pattern, plen, 0, NULL, &extlen);
+      ext = getFileExtension(pattern, plen, 0, nullptr, &extlen);
     }
   }
   return false;
@@ -259,27 +259,23 @@ bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen
   uint8_t fnLen, extLen;
   char tmpExt[LEN_FILE_EXTENSION_MAX+1] = "\0";
 
-#if defined(CPUARM)
   popupMenuOffsetType = MENU_OFFSET_EXTERNAL;
-#endif
 
-#if defined(CPUARM)
   static uint8_t s_last_flags;
 
   if (selection) {
     s_last_flags = flags;
-    if (!isFilePatternAvailable(path, selection, ((flags & LIST_SD_FILE_EXT) ? NULL : extension))) selection = NULL;
+    if (!isFilePatternAvailable(path, selection, ((flags & LIST_SD_FILE_EXT) ? nullptr : extension))) selection = nullptr;
   }
   else {
     flags = s_last_flags;
   }
-#endif
 
   if (popupMenuOffset == 0) {
     lastpopupMenuOffset = 0;
     memset(reusableBuffer.modelsel.menu_bss, 0, sizeof(reusableBuffer.modelsel.menu_bss));
   }
-  else if (popupMenuOffset == popupMenuNoItems - MENU_MAX_DISPLAY_LINES) {
+  else if (popupMenuOffset == popupMenuItemsCount - MENU_MAX_DISPLAY_LINES) {
     lastpopupMenuOffset = 0xffff;
     memset(reusableBuffer.modelsel.menu_bss, 0, sizeof(reusableBuffer.modelsel.menu_bss));
   }
@@ -296,14 +292,13 @@ bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen
     memset(reusableBuffer.modelsel.menu_bss[0], 0, MENU_LINE_LENGTH);
   }
 
-  popupMenuNoItems = 0;
-  POPUP_MENU_SET_BSS_FLAG();
+  popupMenuItemsCount = 0;
 
   FRESULT res = f_opendir(&dir, path);
   if (res == FR_OK) {
 
     if (flags & LIST_NONE_SD_FILE) {
-      popupMenuNoItems++;
+      popupMenuItemsCount++;
       if (selection) {
         lastpopupMenuOffset++;
       }
@@ -342,7 +337,7 @@ bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen
         continue;
       }
 
-      popupMenuNoItems++;
+      popupMenuItemsCount++;
 
       if (!(flags & LIST_SD_FILE_EXT)) {
         fno.fname[fnLen] = '\0';  // strip extension
@@ -353,7 +348,7 @@ bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen
           lastpopupMenuOffset++;
         }
         else {
-          for (uint8_t i=0; i<MENU_MAX_DISPLAY_LINES; i++) {
+          for (uint32_t i=0; i<MENU_MAX_DISPLAY_LINES; i++) {
             char * line = reusableBuffer.modelsel.menu_bss[i];
             if (line[0] == '\0' || strcasecmp(fno.fname, line) < 0) {
               if (i < MENU_MAX_DISPLAY_LINES-1) memmove(reusableBuffer.modelsel.menu_bss[i+1], line, sizeof(reusableBuffer.modelsel.menu_bss[i]) * (MENU_MAX_DISPLAY_LINES-1-i));
@@ -363,7 +358,7 @@ bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen
             }
           }
         }
-        for (uint8_t i=0; i<min(popupMenuNoItems, (uint16_t)MENU_MAX_DISPLAY_LINES); i++) {
+        for (uint32_t i=0; i<min(popupMenuItemsCount, (uint16_t)MENU_MAX_DISPLAY_LINES); i++) {
           popupMenuItems[i] = reusableBuffer.modelsel.menu_bss[i];
         }
 
@@ -378,7 +373,7 @@ bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen
             break;
           }
         }
-        for (uint8_t i=0; i<min(popupMenuNoItems, (uint16_t)MENU_MAX_DISPLAY_LINES); i++) {
+        for (uint32_t i=0; i<min(popupMenuItemsCount, (uint16_t)MENU_MAX_DISPLAY_LINES); i++) {
           popupMenuItems[i] = reusableBuffer.modelsel.menu_bss[i];
         }
       }
@@ -403,7 +398,75 @@ bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen
   else
     popupMenuOffset = lastpopupMenuOffset;
 
-  return popupMenuNoItems;
+  return popupMenuItemsCount;
+}
+
+constexpr uint32_t TEXT_FILE_MAXSIZE = 2048;
+
+void sdReadTextFile(const char * filename, char lines[NUM_BODY_LINES][LCD_COLS + 1], int & lines_count)
+{
+  FIL file;
+  int result;
+  char c;
+  unsigned int sz;
+  int line_length = 0;
+  uint8_t escape = 0;
+  char escape_chars[4] = {0};
+  int current_line = 0;
+
+  memclear(lines, NUM_BODY_LINES * (LCD_COLS + 1));
+
+  result = f_open(&file, filename, FA_OPEN_EXISTING | FA_READ);
+  if (result == FR_OK) {
+    for (unsigned i = 0; i < TEXT_FILE_MAXSIZE && f_read(&file, &c, 1, &sz) == FR_OK && sz == 1 && (lines_count == 0 || current_line - menuVerticalOffset < NUM_BODY_LINES); i++) {
+      if (c == '\n') {
+        ++current_line;
+        line_length = 0;
+        escape = 0;
+      }
+      else if (c!='\r' && current_line>=menuVerticalOffset && current_line-menuVerticalOffset<NUM_BODY_LINES && line_length<LCD_COLS) {
+        if (c == '\\' && escape == 0) {
+          escape = 1;
+          continue;
+        }
+        else if (c != '\\' && escape > 0 && escape < sizeof(escape_chars)) {
+          escape_chars[escape - 1] = c;
+          if (escape == 2 && !strncmp(escape_chars, "up", 2)) {
+            c = '\300';
+          }
+          else if (escape == 2 && !strncmp(escape_chars, "dn", 2)) {
+            c = '\301';
+          }
+          else if (escape == 3) {
+            int val = atoi(escape_chars);
+            if (val >= 200 && val < 225) {
+              c = '\200' + val-200;
+            }
+          }
+          else {
+            escape++;
+            continue;
+          }
+        }
+        else if (c=='~') {
+          c = 'z'+1;
+        }
+        else if (c=='\t') {
+          c = 0x1D; //tab
+        }
+        escape = 0;
+        lines[current_line-menuVerticalOffset][line_length++] = c;
+      }
+    }
+    if (c != '\n') {
+      current_line += 1;
+    }
+    f_close(&file);
+  }
+
+  if (lines_count == 0) {
+    lines_count = current_line;
+  }
 }
 
 // returns true if current working dir is at the root level
@@ -437,7 +500,7 @@ FRESULT sdReadDir(DIR * dir, FILINFO * fno, bool & firstTime)
   return res;
 }
 
-#if defined(CPUARM) && defined(SDCARD)
+#if defined(SDCARD)
 const char * sdCopyFile(const char * srcPath, const char * destPath)
 {
   FIL srcFile;
@@ -471,7 +534,7 @@ const char * sdCopyFile(const char * srcPath, const char * destPath)
     return SDCARD_ERROR(result);
   }
 
-  return NULL;
+  return nullptr;
 }
 
 const char * sdCopyFile(const char * srcFilename, const char * srcDir, const char * destFilename, const char * destDir)
@@ -488,7 +551,7 @@ const char * sdCopyFile(const char * srcFilename, const char * srcDir, const cha
 
   return sdCopyFile(srcPath, destPath);
 }
-#endif // defined(CPUARM) && defined(SDCARD)
+#endif // defined(SDCARD)
 
 
 #if !defined(SIMU) || defined(SIMU_DISKIO)

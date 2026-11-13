@@ -106,22 +106,22 @@ extern "C" {
 #define TIMER_MULT_APB1                 2
 #define TIMER_MULT_APB2                 2
 
-#define strcpy_P strcpy
-#define strcat_P strcat
-
 extern uint16_t sessionTimer;
 
 // Board driver
 void boardInit(void);
 void boardOff(void);
 
+// Timers driver
+void init2MhzTimer();
+
 // Delays driver
 #ifdef __cplusplus
 extern "C" {
 #endif
 void delaysInit(void);
-void delay_01us(uint16_t nb);
-void delay_us(uint16_t nb);
+void delay_01us(uint32_t nb);
+void delay_us(uint32_t nb);
 void delay_ms(uint32_t ms);
 #ifdef __cplusplus
 }
@@ -176,26 +176,26 @@ uint32_t isBootloaderStart(const uint8_t * buffer);
 #define EXTERNAL_MODULE_OFF()           GPIO_ResetBits(EXTMODULE_PWR_GPIO, EXTMODULE_PWR_GPIO_PIN)
 #define IS_INTERNAL_MODULE_ON()         (GPIO_ReadInputDataBit(INTMODULE_PWR_GPIO, INTMODULE_PWR_GPIO_PIN) == Bit_SET)
 #define IS_EXTERNAL_MODULE_ON()         (GPIO_ReadInputDataBit(EXTMODULE_PWR_GPIO, EXTMODULE_PWR_GPIO_PIN) == Bit_SET)
-#if defined(INTMODULE_USART)
+#if defined(INTMODULE_USART) && defined(EXTMODULE_USART)
+  #define IS_UART_MODULE(port)          (true)
+#elif defined(INTMODULE_USART)
   #define IS_UART_MODULE(port)          (port == INTERNAL_MODULE)
 #else
-  #define IS_UART_MODULE(port)          false
+  #define IS_UART_MODULE(port)          (false)
 #endif
 void init_no_pulses(uint32_t port);
 void disable_no_pulses(uint32_t port);
-void init_ppm( uint32_t module_index );
-void disable_ppm( uint32_t module_index );
-void init_pxx( uint32_t module_index );
-void disable_pxx( uint32_t module_index );
-void init_dsm2( uint32_t module_index );
-void disable_dsm2( uint32_t module_index );
-void init_crossfire( uint32_t module_index );
-void disable_crossfire( uint32_t module_index );
-void init_sbusOut(uint32_t module_index);
-void disable_sbusOut(uint32_t module_index);
+void init_ppm( uint32_t module_index);
+void disable_ppm( uint32_t module_index);
+void init_pxx( uint32_t module_index);
+void disable_pxx( uint32_t module_index);
+void init_serial( uint32_t module_index, uint32_t baudrate, uint32_t period);
+void disable_serial( uint32_t module_index);
+void init_module_timer( uint32_t module_index, uint32_t period, uint8_t state);
+void disable_module_timer( uint32_t module_index);
 
 // Trainer driver
-#define SLAVE_MODE()                    (g_model.trainerMode == TRAINER_MODE_SLAVE)
+#define SLAVE_MODE()                    (g_model.trainerData.mode == TRAINER_MODE_SLAVE)
 #if defined(PCBX9E)
   #define TRAINER_CONNECTED()           (true)
 #elif defined(PCBX7)
@@ -234,7 +234,11 @@ int sbusGetByte(uint8_t * byte);
 // Keys driver
 enum EnumKeys
 {
+#if defined(PCBXLITE)
+  KEY_SHIFT,
+#else
   KEY_MENU,
+#endif
   KEY_EXIT,
   KEY_ENTER,
 #if defined(PCBXLITE)
@@ -275,6 +279,14 @@ enum EnumKeys
   #define KEY_DOWN                      KEY_MINUS
   #define KEY_RIGHT                     KEY_MINUS
   #define KEY_LEFT                      KEY_PLUS
+#endif
+
+#if defined(KEYS_GPIO_PIN_SHIFT)
+#define IS_SHIFT_KEY(index)             (index == KEY_SHIFT)
+#define IS_SHIFT_PRESSED()              (~KEYS_GPIO_REG_SHIFT & KEYS_GPIO_PIN_SHIFT)
+#else
+#define IS_SHIFT_KEY(index)             (false)
+#define IS_SHIFT_PRESSED()              (false)
 #endif
 
 enum EnumSwitches
@@ -381,15 +393,14 @@ void checkRotaryEncoder(void);
 #endif
 
 // WDT driver
-#define WDTO_500MS                      500
+#define WDG_DURATION                    500 /*ms*/
 #if defined(WATCHDOG_DISABLED) || defined(SIMU)
-  #define wdt_enable(x)
-  #define wdt_reset()
+  #define WDG_ENABLE(x)
+  #define WDG_RESET()
 #else
-  #define wdt_enable(x)                 watchdogInit(x)
-  #define wdt_reset()                   IWDG->KR = 0xAAAA
+  #define WDG_ENABLE(x)                 watchdogInit(x)
+  #define WDG_RESET()                   IWDG->KR = 0xAAAA
 #endif
-#define wdt_disable()
 void watchdogInit(unsigned int duration);
 #define WAS_RESET_BY_SOFTWARE()             (RCC->CSR & RCC_CSR_SFTRSTF)
 #define WAS_RESET_BY_WATCHDOG()             (RCC->CSR & (RCC_CSR_WDGRSTF | RCC_CSR_WWDGRSTF))
@@ -427,14 +438,20 @@ enum Analogs {
 #define NUM_POTS                        (POT_LAST-POT_FIRST+1)
 #define NUM_XPOTS                       NUM_POTS
 #define NUM_SLIDERS                     (TX_VOLTAGE-POT_LAST-1)
+#define NUM_TRIMS                       4
+#define NUM_MOUSE_ANALOGS               0
+#define NUM_DUMMY_ANAS                  0
 
 #if defined(PCBXLITE)
-  #define NUM_PWMANALOGS                4
-  #define ANALOGS_PWM_ENABLED()         (true)
-  void analogPwmInit(void);
-  void analogPwmRead(uint16_t * values);
-  void analogPwmCheck();
+  #define NUM_PWMSTICKS                 4
+  extern bool sticks_pwm_disabled;
+  #define STICKS_PWM_ENABLED()         (sticks_pwm_disabled == false)
+  void sticksPwmInit(void);
+  void sticksPwmRead(uint16_t * values);
   extern volatile uint32_t pwm_interrupt_count;
+  #define NUM_TRIMS_KEYS                4
+#else
+  #define NUM_TRIMS_KEYS                8
 #endif
 
 enum CalibratedAnalogs {
@@ -459,9 +476,28 @@ void adcInit(void);
 void adcRead(void);
 extern uint16_t adcValues[NUM_ANALOGS];
 uint16_t getAnalogValue(uint8_t index);
-uint16_t getBatteryVoltage();   // returns current battery voltage in 10mV steps
 
-#if defined(PCBX7) || defined(PCBXLITE)
+// Battery driver
+uint16_t getBatteryVoltage();   // returns current battery voltage in 10mV steps
+#if defined(PCBX9E)
+  // NI-MH 9.6V
+  #define BATTERY_WARN                  87 // 8.7V
+  #define BATTERY_MIN                   85 // 8.5V
+  #define BATTERY_MAX                   115 // 11.5V
+#elif defined(PCBXLITE)
+  // 2 x Li-Ion
+  #define BATTERY_WARN                  66 // 6.6V
+  #define BATTERY_MIN                   67 // 6.7V
+  #define BATTERY_MAX                   83 // 8.3V
+#else
+  // NI-MH 7.2V
+  #define BATTERY_WARN                  65 // 6.5V
+  #define BATTERY_MIN                   60 // 6.0V
+  #define BATTERY_MAX                   80 // 8.0V
+#endif
+#if defined(PCBXLITE)
+  #define BATT_SCALE                    131
+#elif defined(PCBX7)
   #define BATT_SCALE                    123
 #else
   #define BATT_SCALE                    150
@@ -477,10 +513,11 @@ void pwrInit(void);
 uint32_t pwrCheck(void);
 void pwrOn(void);
 void pwrOff(void);
-uint32_t pwrPressed(void);
-#if defined(PWR_PRESS_BUTTON)
+bool pwrPressed(void);
+#if defined(PWR_BUTTON_PRESS)
 uint32_t pwrPressedDuration(void);
 #endif
+void pwrResetHandler(void);
 
 #if defined(SIMU)
 #define UNEXPECTED_SHUTDOWN()           false
@@ -492,13 +529,14 @@ uint32_t pwrPressedDuration(void);
 void backlightInit(void);
 void backlightDisable(void);
 #define BACKLIGHT_DISABLE()             backlightDisable()
+#define BACKLIGHT_FORCED_ON             101
 uint8_t isBacklightEnabled(void);
 #if defined(PCBX9E) || defined(PCBX9DP)
   void backlightEnable(uint8_t level, uint8_t color);
-  #define BACKLIGHT_ENABLE()            backlightEnable(g_eeGeneral.backlightBright, g_eeGeneral.backlightColor)
+  #define BACKLIGHT_ENABLE()            backlightEnable(currentBacklightBright, g_eeGeneral.backlightColor)
 #else
   void backlightEnable(uint8_t level);
-  #define BACKLIGHT_ENABLE()            backlightEnable(g_eeGeneral.backlightBright)
+  #define BACKLIGHT_ENABLE()            backlightEnable(currentBacklightBright)
 #endif
 
 #if !defined(SIMU)
@@ -530,7 +568,7 @@ void debugPutc(const char c);
 // Telemetry driver
 void telemetryPortInit(uint32_t baudrate, uint8_t mode);
 void telemetryPortSetDirectionOutput(void);
-void sportSendBuffer(uint8_t * buffer, uint32_t count);
+void sportSendBuffer(const uint8_t * buffer, uint32_t count);
 uint8_t telemetryGetByte(uint8_t * byte);
 extern uint32_t telemetryErrors;
 
@@ -553,8 +591,8 @@ void sportUpdatePowerOff(void);
 #define SPORT_UPDATE_POWER_OFF()        sportUpdatePowerOff()
 #else
 #define sportUpdateInit()
-#define SPORT_UPDATE_POWER_ON()         EXTERNAL_MODULE_ON()
-#define SPORT_UPDATE_POWER_OFF()        EXTERNAL_MODULE_OFF()
+#define SPORT_UPDATE_POWER_ON()
+#define SPORT_UPDATE_POWER_OFF()
 #endif
 
 // Audio driver
@@ -584,15 +622,15 @@ void hapticOff(void);
 #endif
 
 // Second serial port driver
-#if defined(SERIAL_GPIO)
+#if defined(AUX_SERIAL_GPIO)
 #define DEBUG_BAUDRATE                  115200
-#define SERIAL2
-extern uint8_t serial2Mode;
-void serial2Init(unsigned int mode, unsigned int protocol);
-void serial2Putc(char c);
-#define serial2TelemetryInit(protocol) serial2Init(UART_MODE_TELEMETRY, protocol)
-void serial2SbusInit(void);
-void serial2Stop(void);
+#define AUX_SERIAL
+extern uint8_t auxSerialMode;
+void auxSerialInit(unsigned int mode, unsigned int protocol);
+void auxSerialPutc(char c);
+#define auxSerialTelemetryInit(protocol) auxSerialInit(UART_MODE_TELEMETRY, protocol)
+void auxSerialSbusInit(void);
+void auxSerialStop(void);
 #endif
 
 // BT driver
@@ -615,15 +653,7 @@ void ledGreen(void);
 void ledBlue(void);
 
 // LCD driver
-#if defined(STATUS_LEDS)
-#define LCD_W                           128
-#define LCD_H                           64
-#define LCD_DEPTH                       1
-#define IS_LCD_RESET_NEEDED()           true
-#define LCD_CONTRAST_MIN                10
-#define LCD_CONTRAST_MAX                30
-#define LCD_CONTRAST_DEFAULT            20
-#else
+#if defined(PCBX9D) || defined(PCBX9DP) || defined(PCBX9E)
 #define LCD_W                           212
 #define LCD_H                           64
 #define LCD_DEPTH                       4
@@ -631,6 +661,14 @@ void ledBlue(void);
 #define LCD_CONTRAST_MIN                0
 #define LCD_CONTRAST_MAX                45
 #define LCD_CONTRAST_DEFAULT            25
+#else
+#define LCD_W                           128
+#define LCD_H                           64
+#define LCD_DEPTH                       1
+#define IS_LCD_RESET_NEEDED()           true
+#define LCD_CONTRAST_MIN                10
+#define LCD_CONTRAST_MAX                30
+#define LCD_CONTRAST_DEFAULT            20
 #endif
 void lcdInit(void);
 void lcdInitFinish(void);
@@ -679,7 +717,7 @@ void checkTrainerSettings(void);
 #endif
 
 extern Fifo<uint8_t, TELEMETRY_FIFO_SIZE> telemetryFifo;
-extern DMAFifo<32> serial2RxFifo;
+extern DMAFifo<32> auxSerialRxFifo;
 #endif
 
 #endif // _BOARD_H_

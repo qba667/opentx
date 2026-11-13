@@ -58,8 +58,11 @@ class SensorData {
       TELEM_CELL_INDEX_4,
       TELEM_CELL_INDEX_5,
       TELEM_CELL_INDEX_6,
+//      TELEM_CELL_INDEX_7, // PCBI6X: uses RAM and I don't think someone will use 8S with i6X
+//      TELEM_CELL_INDEX_8,
       TELEM_CELL_INDEX_HIGHEST,
       TELEM_CELL_INDEX_DELTA,
+      TELEM_CELL_INDEX_LAST = TELEM_CELL_INDEX_DELTA
     };
 
     enum

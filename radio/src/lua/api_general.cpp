@@ -33,6 +33,8 @@
   #include "lua/lua_exports_x9e.inc"
 #elif defined(PCBX7)
   #include "lua/lua_exports_x7.inc"
+#elif defined(PCBXLITE)
+  #include "lua/lua_exports_xlite.inc"
 #elif defined(PCBTARANIS)
   #include "lua/lua_exports_x9d.inc"
 #endif
@@ -299,7 +301,10 @@ bool luaFindFieldByName(const char * name, LuaField & field, unsigned int flags)
         continue;
       }
       if (index < luaMultipleFields[n].count) {
-        field.id = luaMultipleFields[n].id + index;
+        if(luaMultipleFields[n].id == MIXSRC_FIRST_TELEM)
+          field.id = luaMultipleFields[n].id + index*3;
+        else
+          field.id = luaMultipleFields[n].id + index;
         if (flags & FIND_FIELD_DESC) {
           snprintf(field.desc, sizeof(field.desc)-1, luaMultipleFields[n].desc, index+1);
           field.desc[sizeof(field.desc)-1] = '\0';
@@ -369,7 +374,7 @@ static int luaSportTelemetryPop(lua_State * L)
 
   if (luaInputTelemetryFifo->size() >= sizeof(SportTelemetryPacket)) {
     SportTelemetryPacket packet;
-    for (uint8_t i=0; i<sizeof(packet); i++) {
+    for (uint32_t i=0; i<sizeof(packet); i++) {
       luaInputTelemetryFifo->pop(packet.raw[i]);
     }
     lua_pushnumber(L, packet.physicalId);
@@ -461,7 +466,7 @@ static int luaCrossfireTelemetryPop(lua_State * L)
     luaInputTelemetryFifo->pop(data); // command
     lua_pushnumber(L, data);
     lua_newtable(L);
-    for (uint8_t i=1; i<length-1; i++) {
+    for (uint32_t i=1; i<length-1; i++) {
       luaInputTelemetryFifo->pop(data);
       lua_pushinteger(L, i);
       lua_pushinteger(L, data);
@@ -497,7 +502,7 @@ static int luaCrossfireTelemetryPush(lua_State * L)
     uint8_t command = luaL_checkunsigned(L, 1);
     luaL_checktype(L, 2, LUA_TTABLE);
     uint8_t length = luaL_len(L, 2);
-    telemetryOutputPushByte(MODULE_ADDRESS);
+    telemetryOutputPushByte(CSRF_ADDRESS_TX);
     telemetryOutputPushByte(2 + length); // 1(COMMAND) + data length + 1(CRC)
     telemetryOutputPushByte(command); // COMMAND
     for (int i=0; i<length; i++) {
@@ -667,7 +672,7 @@ Return the internal GPS position or nil if no valid hardware found
  * 'speed' (number) internal GPSspeed in 0.1m/s
  * 'heading'  (number) internal GPS ground course estimation in degrees * 10
 
-@status current Introduced in 2.2.2
+@status current Introduced in 2.3.0
 */
 static int luaGetTxGPS(lua_State * L)
 {
@@ -910,7 +915,7 @@ Returns (some of) the general radio settings
  * `gtimer` (number) radio global timer in seconds (does not include current session)
 
 @status current Introduced in 2.0.6, `imperial` added in TODO,
-`language` and `voice` added in 2.2.0, gtimer added in 2.2.2.
+`language` and `voice` added in 2.2.0, gtimer added in 2.3.0.
 
 */
 static int luaGetGeneralSettings(lua_State * L)
@@ -923,55 +928,6 @@ static int luaGetGeneralSettings(lua_State * L)
   lua_pushtablestring(L, "language", TRANSLATIONS);
   lua_pushtablestring(L, "voice", currentLanguagePack->id);
   lua_pushtableinteger(L, "gtimer", g_eeGeneral.globalTimer);
-  return 1;
-}
-
-/*luadoc
-@function popupInput(title, event, input, min, max)
-
-Raises a pop-up on screen that allows uses input
-
-@param title (string) text to display
-
-@param event (number) the event variable that is passed in from the
-Run function (key pressed)
-
-@param input (number) value that can be adjusted by the +/­- keys
-
-@param min  (number) min value that input can reach (by pressing the -­ key)
-
-@param max  (number) max value that input can reach
-
-@retval number result of the input adjustment
-
-@retval "OK" user pushed ENT key
-
-@retval "CANCEL" user pushed EXIT key
-
-@notice Use only from stand-alone and telemetry scripts.
-
-@status current Introduced in 2.0.0
-*/
-static int luaPopupInput(lua_State * L)
-{
-  event_t event = luaL_checkinteger(L, 2);
-  warningInputValue = luaL_checkinteger(L, 3);
-  warningInputValueMin = luaL_checkinteger(L, 4);
-  warningInputValueMax = luaL_checkinteger(L, 5);
-  warningText = luaL_checkstring(L, 1);
-  warningType = WARNING_TYPE_INPUT;
-  runPopupWarning(event);
-  if (warningResult) {
-    warningResult = 0;
-    lua_pushstring(L, "OK");
-  }
-  else if (!warningText) {
-    lua_pushstring(L, "CANCEL");
-  }
-  else {
-    lua_pushinteger(L, warningInputValue);
-  }
-  warningText = NULL;
   return 1;
 }
 
@@ -1053,7 +1009,7 @@ Get stick that is assigned to a channel. See Default Channel Order in General Se
 static int luaDefaultStick(lua_State * L)
 {
   uint8_t channel = luaL_checkinteger(L, 1);
-  lua_pushinteger(L, channel_order(channel+1)-1);
+  lua_pushinteger(L, channelOrder(channel+1)-1);
   return 1;
 }
 
@@ -1105,7 +1061,7 @@ static int luaSetTelemetryValue(lua_State * L)
     zname[3] = hex2zchar((id & 0x000f) >> 0);
   }
   if (id | subId | instance) {
-    int index = setTelemetryValue(TELEM_PROTO_LUA, id, subId, instance, value, unit, prec);
+    int index = setTelemetryValue(PROTOCOL_TELEMETRY_LUA, id, subId, instance, value, unit, prec);
     if (index >= 0) {
       TelemetrySensor &telemetrySensor = g_model.telemetrySensors[index];
       telemetrySensor.id = id;
@@ -1139,7 +1095,7 @@ static int luaDefaultChannel(lua_State * L)
 {
   uint8_t stick = luaL_checkinteger(L, 1);
   for (int i=1; i<=4; i++) {
-    int tmp = channel_order(i) - 1;
+    int tmp = channelOrder(i) - 1;
     if (tmp == stick) {
       lua_pushinteger(L, i-1);
       return 1;
@@ -1165,8 +1121,8 @@ Get RSSI value as well as low and critical RSSI alarm levels (in dB)
 static int luaGetRSSI(lua_State * L)
 {
   lua_pushunsigned(L, min((uint8_t)99, TELEMETRY_RSSI()));
-  lua_pushunsigned(L, g_model.rssiAlarms.getWarningRssi());
-  lua_pushunsigned(L, g_model.rssiAlarms.getCriticalRssi());
+  lua_pushunsigned(L, g_model.rfAlarms.warning);
+  lua_pushunsigned(L, g_model.rfAlarms.critical);
   return 3;
 }
 
@@ -1269,12 +1225,50 @@ static int luaGetUsage(lua_State * L)
 
 Resets the radio global timer to 0.
 
-@status current Introduced in 2.2.2
+@status current Introduced in 2.3.0
 */
 static int luaResetGlobalTimer(lua_State * L)
 {
   g_eeGeneral.globalTimer = 0;
   storageDirty(EE_GENERAL);
+  return 0;
+}
+
+/*luadoc
+@function serialWrite(str)
+@param str (string) String to be written to the serial port.
+
+Writes a string to the serial port. The string is allowed to contain any character, including 0.
+
+@status current Introducted in TODO
+*/
+static int luaSerialWrite(lua_State * L)
+{
+  const char * str = luaL_checkstring(L, 1);
+  size_t len = lua_rawlen(L, 1);
+
+  if (!str || len < 1)
+    return 0;
+
+#if !defined(SIMU)
+  #if defined(USB_SERIAL)
+  if (getSelectedUsbMode() == USB_SERIAL_MODE) {
+    size_t wr_len = len;
+    const char* p = str;
+    while(wr_len--) usbSerialPutc(*p++);
+  }
+  #endif
+  #if defined(AUX_SERIAL)
+  if (auxSerialMode == UART_MODE_LUA) {
+    size_t wr_len = len;
+    const char* p = str;
+    while(wr_len--) auxSerialPutc(*p++);
+  }
+  #endif
+#else
+  debugPrintf("luaSerialWrite: %.*s",len,str);
+#endif
+
   return 0;
 }
 
@@ -1296,7 +1290,7 @@ const luaL_Reg opentxLib[] = {
   { "playDuration", luaPlayDuration },
   { "playTone", luaPlayTone },
   { "playHaptic", luaPlayHaptic },
-  { "popupInput", luaPopupInput },
+  // { "popupInput", luaPopupInput },
   { "popupWarning", luaPopupWarning },
   { "popupConfirmation", luaPopupConfirmation },
   { "defaultStick", luaDefaultStick },
@@ -1316,6 +1310,7 @@ const luaL_Reg opentxLib[] = {
   { "crossfireTelemetryPop", luaCrossfireTelemetryPop },
   { "crossfireTelemetryPush", luaCrossfireTelemetryPush },
 #endif
+  { "serialWrite", luaSerialWrite },
   { NULL, NULL }  /* sentinel */
 };
 
@@ -1344,12 +1339,14 @@ const luaR_value_entry opentxConstants[] = {
   { "MIXSRC_SB", MIXSRC_SB },
   { "MIXSRC_SC", MIXSRC_SC },
   { "MIXSRC_SD", MIXSRC_SD },
-#if !defined(PCBX7)
+#if !defined(PCBX7) && !defined(PCBXLITE)
   { "MIXSRC_SE", MIXSRC_SE },
   { "MIXSRC_SG", MIXSRC_SG },
 #endif
+#if !defined(PCBXLITE)
   { "MIXSRC_SF", MIXSRC_SF },
   { "MIXSRC_SH", MIXSRC_SH },
+#endif
   { "MIXSRC_CH1", MIXSRC_CH1 },
   { "SWSRC_LAST", SWSRC_LAST_LOGICAL_SWITCH },
 #if defined(COLORLCD)
@@ -1402,6 +1399,29 @@ const luaR_value_entry opentxConstants[] = {
   { "EVT_MODEL_FIRST",  EVT_KEY_FIRST(KEY_MODEL) },
   { "EVT_SYS_FIRST",  EVT_KEY_FIRST(KEY_RADIO) },
   { "EVT_RTN_FIRST",  EVT_KEY_FIRST(KEY_EXIT) },
+#elif defined(PCBXLITE)
+  { "EVT_DOWN_FIRST", EVT_KEY_FIRST(KEY_DOWN) },
+  { "EVT_UP_FIRST", EVT_KEY_FIRST(KEY_UP) },
+  { "EVT_LEFT_FIRST", EVT_KEY_FIRST(KEY_LEFT) },
+  { "EVT_RIGHT_FIRST", EVT_KEY_FIRST(KEY_RIGHT) },
+  { "EVT_SHIFT_FIRST", EVT_KEY_FIRST(KEY_SHIFT) },
+  { "EVT_DOWN_BREAK", EVT_KEY_BREAK(KEY_DOWN) },
+  { "EVT_UP_BREAK", EVT_KEY_BREAK(KEY_UP) },
+  { "EVT_LEFT_BREAK", EVT_KEY_BREAK(KEY_LEFT) },
+  { "EVT_RIGHT_BREAK", EVT_KEY_BREAK(KEY_RIGHT) },
+  { "EVT_SHIFT_BREAK", EVT_KEY_BREAK(KEY_SHIFT) },
+  { "EVT_DOWN_LONG", EVT_KEY_LONG(KEY_DOWN) },
+  { "EVT_UP_LONG", EVT_KEY_LONG(KEY_UP) },
+  { "EVT_LEFT_LONG", EVT_KEY_LONG(KEY_LEFT) },
+  { "EVT_RIGHT_LONG", EVT_KEY_LONG(KEY_RIGHT) },
+  { "EVT_SHIFT_LONG", EVT_KEY_LONG(KEY_SHIFT) },
+  { "EVT_DOWN_REPT", EVT_KEY_REPT(KEY_DOWN) },
+  { "EVT_UP_REPT", EVT_KEY_REPT(KEY_UP) },
+  { "EVT_LEFT_REPT", EVT_KEY_REPT(KEY_LEFT) },
+  { "EVT_RIGHT_REPT", EVT_KEY_REPT(KEY_RIGHT) },
+  { "FORCE", FORCE },
+  { "ERASE", ERASE },
+  { "ROUND", ROUND },
 #elif defined(PCBTARANIS)
   { "EVT_MENU_BREAK", EVT_KEY_BREAK(KEY_MENU) },
   { "EVT_MENU_LONG", EVT_KEY_LONG(KEY_MENU) },

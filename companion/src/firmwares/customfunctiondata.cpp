@@ -26,7 +26,7 @@
 
 void CustomFunctionData::clear()
 {
-  memset(this, 0, sizeof(CustomFunctionData));
+  memset(reinterpret_cast<void *>(this), 0, sizeof(CustomFunctionData));
   if (!getCurrentFirmware()->getCapability(SafetyChannelCustomFunction)) {
     func = FuncTrainer;
   }
@@ -161,24 +161,24 @@ QString CustomFunctionData::paramToString(const ModelData * model) const
   if (func <= FuncInstantTrim) {
     return QString("%1").arg(param);
   }
-  else if (func==FuncLogs) {
+  else if (func == FuncLogs) {
     return QString("%1").arg(param/10.0) + tr("s");
   }
-  else if (func==FuncPlaySound) {
+  else if (func == FuncPlaySound) {
     CustomFunctionData::populatePlaySoundParams(qs);
     if (param>=0 && param<(int)qs.count())
       return qs.at(param);
     else
       return tr("<font color=red><b>Inconsistent parameter</b></font>");
   }
-  else if (func==FuncPlayHaptic) {
+  else if (func == FuncPlayHaptic) {
     CustomFunctionData::populateHapticParams(qs);
     if (param>=0 && param<(int)qs.count())
       return qs.at(param);
     else
       return tr("<font color=red><b>Inconsistent parameter</b></font>");
   }
-  else if (func==FuncReset) {
+  else if (func == FuncReset) {
     QComboBox cb;
     CustomFunctionData::populateResetParams(model, &cb);
     int pos = cb.findData(param);
@@ -187,11 +187,11 @@ QString CustomFunctionData::paramToString(const ModelData * model) const
     else
       return tr("<font color=red><b>Inconsistent parameter</b></font>");
   }
-  else if ((func==FuncVolume)|| (func==FuncPlayValue)) {
+  else if (func == FuncVolume || func == FuncPlayValue || func == FuncBacklight) {
     RawSource item(param);
     return item.toString(model);
   }
-  else if ((func==FuncPlayPrompt) || (func==FuncPlayBoth)) {
+  else if (func == FuncPlayPrompt || func == FuncPlayBoth) {
     if ( getCurrentFirmware()->getCapability(VoicesAsNumbers)) {
       return QString("%1").arg(param);
     }
@@ -199,7 +199,7 @@ QString CustomFunctionData::paramToString(const ModelData * model) const
       return paramarm;
     }
   }
-  else if ((func>=FuncAdjustGV1) && (func<FuncCount)) {
+  else if (func >= FuncAdjustGV1 && func < FuncCount) {
     switch (adjustMode) {
       case FUNC_ADJUST_GVAR_CONSTANT:
         return tr("Value ")+QString("%1").arg(param);
@@ -207,8 +207,17 @@ QString CustomFunctionData::paramToString(const ModelData * model) const
       case FUNC_ADJUST_GVAR_GVAR:
         return RawSource(param).toString();
       case FUNC_ADJUST_GVAR_INCDEC:
-        if (param==0) return tr("Decr:") + " -1";
-        else          return tr("Incr:") + " +1";
+        float val;
+        QString unit;
+        if (IS_ARM(getCurrentBoard())) {
+          val = param * model->gvarData[func - FuncAdjustGV1].multiplierGet();
+          unit = model->gvarData[func - FuncAdjustGV1].unitToString();
+        }
+        else {
+          val = param;
+          unit = "";
+        }
+        return QString("Increment: %1%2").arg(val).arg(unit);
     }
   }
   return "";
@@ -230,11 +239,12 @@ QString CustomFunctionData::repeatToString() const
 
 QString CustomFunctionData::enabledToString() const
 {
-  if ((func>=FuncOverrideCH1 && func<=FuncOverrideCH32) ||
-      (func>=FuncAdjustGV1 && func<=FuncAdjustGVLast) ||
-      (func==FuncReset) ||
-      (func>=FuncSetTimer1 && func<=FuncSetTimer2) ||
-      (func==FuncVolume) ||
+  if ((func >= FuncOverrideCH1 && func <= FuncOverrideCH32) ||
+      (func >= FuncAdjustGV1 && func <= FuncAdjustGVLast) ||
+      (func == FuncReset) ||
+      (func >= FuncSetTimer1 && func <= FuncSetTimer2) ||
+      (func == FuncVolume) ||
+      (func == FuncBacklight) ||
       (func <= FuncInstantTrim)) {
     if (!enabled) {
       return tr("DISABLED");
@@ -248,7 +258,7 @@ void CustomFunctionData::convert(RadioDataConversionState & cstate)
   cstate.setComponent(tr("CFN"), 8);
   cstate.setSubComp(nameToString(cstate.subCompIdx, (cstate.toModel() ? false : true)));
   swtch.convert(cstate);
-  if (func == FuncVolume || func == FuncPlayValue || (func >= FuncAdjustGV1 && func <= FuncAdjustGVLast && adjustMode == 1)) {
+  if (func == FuncVolume || func == FuncBacklight || func == FuncPlayValue || (func >= FuncAdjustGV1 && func <= FuncAdjustGVLast && adjustMode == 1)) {
     param = RawSource(param).convert(cstate.withComponentField("PARAM")).toValue();
   }
 }

@@ -25,6 +25,9 @@
 
 #include <QtCore>
 
+class Firmware;
+class RadioDataConversionState;
+
 enum PulsesProtocol {
   PULSES_OFF,
   PULSES_PPM,
@@ -84,7 +87,18 @@ enum MultiModuleRFProtocols {
   MM_RF_PROTO_CABELL,
   MM_RF_PROTO_ESKY150,
   MM_RF_PROTO_H83D,
-  MM_RF_PROTO_LAST=MM_RF_PROTO_H83D
+  MM_RF_PROTO_CORONA,
+  MM_RF_PROTO_CFLIE,
+  MM_RF_PROTO_HITEC,
+  MM_RF_PROTO_WFLY,
+  MM_RF_PROTO_BUGS,
+  MM_RF_PROTO_BUGS_MINI,
+  MM_RF_PROTO_TRAXXAS,
+  MM_RF_PROTO_NCC1701,
+  MM_RF_PROTO_E01X,
+  MM_RF_PROTO_V911S,
+  MM_RF_PROTO_GD00X,
+  MM_RF_PROTO_LAST = MM_RF_PROTO_GD00X
 };
 
 enum TrainerProtocol {
@@ -93,6 +107,14 @@ enum TrainerProtocol {
   TRAINER_MASTER_SBUS_MODULE,
   TRAINER_MASTER_CPPM_MODULE,
   TRAINER_MASTER_SBUS_BATT_COMPARTMENT
+};
+
+enum R9MSubTypes {
+  MODULE_SUBTYPE_R9M_FCC,
+  MODULE_SUBTYPE_R9M_EU,
+  MODULE_SUBTYPE_R9M_EUPLUS,
+  MODULE_SUBTYPE_R9M_AUPLUS,
+  MODULE_SUBTYPE_R9M_LAST=MODULE_SUBTYPE_R9M_AUPLUS
 };
 
 class ModuleData {
@@ -135,7 +157,14 @@ class ModuleData {
 
 
     void clear() { memset(this, 0, sizeof(ModuleData)); }
-    QString polarityToString() const { return ppm.pulsePol ? tr("Positive") : tr("Negative"); } // TODO ModelPrinter
+    void convert(RadioDataConversionState & cstate);
+    QString polarityToString() const { return ppm.pulsePol ? tr("Positive") : tr("Negative"); }
+    QString rfProtocolToString() const;
+    QString subTypeToString(int type = -1) const;
+    QString powerValueToString(Firmware * fw) const;
+    static QString indexToString(int index, Firmware * fw);
+    static QString protocolToString(unsigned protocol);
+    static QStringList powerValueStrings(int subType, Firmware * fw);
 };
 
 #endif // MODULEDATA_H

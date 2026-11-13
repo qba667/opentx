@@ -21,7 +21,11 @@
 #ifndef _SDCARD_H_
 #define _SDCARD_H_
 
+#if !defined(SIMU)
 #include "ff.h"
+#endif
+
+#include "opentx.h"
 
 #define ROOT_PATH           "/"
 #define MODELS_PATH         ROOT_PATH "MODELS"      // no trailing slash = important
@@ -43,6 +47,7 @@
 #define SCRIPTS_MIXES_PATH  SCRIPTS_PATH "/MIXES"
 #define SCRIPTS_FUNCS_PATH  SCRIPTS_PATH "/FUNCTIONS"
 #define SCRIPTS_TELEM_PATH  SCRIPTS_PATH "/TELEMETRY"
+#define SCRIPTS_TOOLS_PATH SCRIPTS_PATH "/TOOLS"
 
 #define LEN_FILE_PATH_MAX   (sizeof(SCRIPTS_TELEM_PATH)+1)  // longest + "/"
 
@@ -103,7 +108,7 @@ uint32_t sdGetFreeSectors();
 const char * sdCheckAndCreateDirectory(const char * path);
 
 #if !defined(BOOT)
-inline const pm_char * SDCARD_ERROR(FRESULT result)
+inline const char * SDCARD_ERROR(FRESULT result)
 {
   if (result == FR_NOT_READY)
     return STR_NO_SDCARD;
@@ -134,12 +139,6 @@ const char * getFileExtension(const char * filename, uint8_t size=0, uint8_t ext
 #elif defined(PCBX9D) || defined(PCBX9DP)
   #define OTX_FOURCC 0x3378746F // otx for Taranis X9D
   #define O9X_FOURCC 0x3378396F // o9x for Taranis X9D
-#elif defined(PCBSKY9X)
-  #define OTX_FOURCC 0x3278746F // otx for sky9x
-  #define O9X_FOURCC 0x3278396F // o9x for sky9x
-#elif defined(PCBGRUVIN9X) || defined(PCBMEGA2560)
-  #define OTX_FOURCC 0x3178746F // otx for gruvin9x/MEGA2560
-  #define O9X_FOURCC 0x3178396F // o9x for gruvin9x/MEGA2560
 #endif
 
 bool isFileAvailable(const char * filename, bool exclDir = false);
@@ -152,6 +151,8 @@ const char * sdCopyFile(const char * srcFilename, const char * srcDir, const cha
 #define LIST_NONE_SD_FILE   1
 #define LIST_SD_FILE_EXT    2
 bool sdListFiles(const char * path, const char * extension, const uint8_t maxlen, const char * selection, uint8_t flags=0);
+
+void sdReadTextFile(const char * filename, char lines[NUM_BODY_LINES][LCD_COLS + 1], int & lines_count);
 
 bool isCwdAtRoot();
 FRESULT sdReadDir(DIR * dir, FILINFO * fno, bool & firstTime);

@@ -33,12 +33,12 @@ void onModelCustomScriptMenu(const char *result)
   ScriptData &sd = g_model.scriptsData[s_currIdx];
 
   if (result == STR_UPDATE_LIST) {
-    if (!sdListFiles(SCRIPTS_MIXES_PATH, SCRIPTS_EXT, sizeof(sd.file), NULL)) {
+    if (!sdListFiles(SCRIPTS_MIXES_PATH, SCRIPTS_EXT, sizeof(sd.file), nullptr)) {
       POPUP_WARNING(STR_NO_SCRIPTS_ON_SD);
     }
   }
-  else {
-    // The user choosed a lua file in the list
+  else if (result) {
+    // The user chosen a lua file in the list
     copySelection(sd.file, result, sizeof(sd.file));
     memset(sd.inputs, 0, sizeof(sd.inputs));
     storageDirty(EE_MODEL);

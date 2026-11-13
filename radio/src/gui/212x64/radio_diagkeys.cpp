@@ -2,7 +2,7 @@
  * Copyright (C) OpenTX
  *
  * Based on code named
- *   th9x - http://code.google.com/p/th9x 
+ *   th9x - http://code.google.com/p/th9x
  *   er9x - http://code.google.com/p/er9x
  *   gruvin9x - http://code.google.com/p/gruvin9x
  *
@@ -28,11 +28,11 @@ void displayKeyState(uint8_t x, uint8_t y, uint8_t key)
 
 void menuRadioDiagKeys(event_t event)
 {
-  SIMPLE_MENU(STR_MENU_RADIO_SWITCHES, menuTabGeneral, MENU_RADIO_SWITCHES_TEST, 1);
+  SIMPLE_SUBMENU(STR_MENU_RADIO_SWITCHES, 1);
 
   lcdDrawText(14*FW, MENU_HEADER_HEIGHT+2*FH, STR_VTRIM);
 
-  for (uint8_t i=0; i<9; i++) {
+  for (uint32_t i=0; i<9; i++) {
     coord_t y;
 
     if (i<8) {

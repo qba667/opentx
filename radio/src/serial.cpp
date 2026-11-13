@@ -20,6 +20,8 @@
 
 #include "opentx.h"
 #include "serial.h"
+#include "thirdparty/mini_print/mini_vsnprintf.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -27,23 +29,25 @@
 
 void serialPutc(char c) {
 #if !defined(BOOT) && defined(USB_SERIAL)
-  if (getSelectedUsbMode() == USB_SERIAL_MODE)
+  if (getSelectedUsbMode() == USB_SERIAL_MODE) {
     usbSerialPutc(c);
+    return;
+  }
 #endif
-#if defined(SERIAL2)
-  if (serial2TracesEnabled())
-    serial2Putc(c);
+#if defined(AUX_SERIAL)
+  if (auxSerialTracesEnabled())
+    auxSerialPutc(c);
 #endif
 }
 
 void serialPrintf(const char * format, ...)
 {
   va_list arglist;
-  char tmp[PRINTF_BUFFER_SIZE+1];
+  char tmp[PRINTF_BUFFER_SIZE];
 
   va_start(arglist, format);
-  vsnprintf(tmp, PRINTF_BUFFER_SIZE, format, arglist);
-  tmp[PRINTF_BUFFER_SIZE] = '\0';
+  mini_vsnprintf(tmp, PRINTF_BUFFER_SIZE, format, arglist);
+  // tmp[PRINTF_BUFFER_SIZE] = '\0'; // guaranted by vsnprintf
   va_end(arglist);
 
   const char *t = tmp;
@@ -57,3 +61,18 @@ void serialCrlf()
   serialPutc('\r');
   serialPutc('\n');
 }
+
+// TODO: replace serialSetupCallBacks & serialSetupPort
+//       with usage based handlers.
+//
+// static void serialSetCallBacks(int mode, void* ctx, const etx_serial_port_t* port)
+// {
+
+// }
+
+void serialInit(uint8_t port_nr, int mode)
+{
+
+}
+
+

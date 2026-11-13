@@ -133,7 +133,7 @@ void menuModelSensor(event_t event)
 
   SUBMENU(STR_MENUSENSOR, SENSOR_FIELD_MAX, { 0, 0, sensor->type == TELEM_TYPE_CALCULATED ? (uint8_t)0 : (uint8_t)1, SENSOR_UNIT_ROWS, SENSOR_PREC_ROWS, SENSOR_PARAM1_ROWS, SENSOR_PARAM2_ROWS, SENSOR_PARAM3_ROWS, SENSOR_PARAM4_ROWS, SENSOR_AUTOOFFSET_ROWS, SENSOR_ONLYPOS_ROWS, SENSOR_FILTER_ROWS, SENSOR_PERSISTENT_ROWS, 0 });
 
-  for (uint8_t i=0; i<NUM_BODY_LINES; i++) {
+  for (uint32_t i=0; i<NUM_BODY_LINES; i++) {
     coord_t y = MENU_HEADER_HEIGHT + 1 + i*FH;
     int k = i + menuVerticalOffset;
 
@@ -250,7 +250,7 @@ void menuModelSensor(event_t event)
             break;
           }
           else if (sensor->formula == TELEM_FORMULA_TOTALIZE) {
-            lcdDrawTextAlignedLeft(y, NO_INDENT(STR_SOURCE));
+            lcdDrawTextAlignedLeft(y, STR_SOURCE);
             drawSource(SENSOR_2ND_COLUMN, y, sensor->consumption.source ? MIXSRC_FIRST_TELEM+3*(sensor->consumption.source-1) : 0, attr);
             if (attr) {
               sensor->consumption.source = checkIncDec(event, sensor->consumption.source, 0, MAX_TELEMETRY_SENSORS, EE_MODEL|NO_INCDEC_MARKS, isSensorAvailable);
@@ -280,7 +280,7 @@ void menuModelSensor(event_t event)
       case SENSOR_FIELD_PARAM2:
         if (sensor->type == TELEM_TYPE_CALCULATED) {
           if (sensor->formula == TELEM_FORMULA_CELL) {
-            sensor->cell.index = editChoice(SENSOR_2ND_COLUMN, y, STR_CELLINDEX, STR_VCELLINDEX, sensor->cell.index, 0, 8, attr, event);
+            sensor->cell.index = editChoice(SENSOR_2ND_COLUMN, y, STR_CELLINDEX, STR_VCELLINDEX, sensor->cell.index, TELEM_CELL_INDEX_LOWEST, TELEM_CELL_INDEX_LAST, attr, event);
             break;
           }
           else if (sensor->formula == TELEM_FORMULA_DIST) {
@@ -299,7 +299,7 @@ void menuModelSensor(event_t event)
           break;
         }
         else {
-          lcdDrawTextAlignedLeft(y, NO_INDENT(STR_OFFSET));
+          lcdDrawTextAlignedLeft(y, STR_OFFSET);
           if (attr) sensor->custom.offset = checkIncDec(event, sensor->custom.offset, -30000, +30000, EE_MODEL|NO_INCDEC_MARKS|INCDEC_REP10);
           if (sensor->prec > 0) attr |= (sensor->prec == 2 ? PREC2 : PREC1);
           lcdDrawNumber(SENSOR_2ND_COLUMN, y, sensor->custom.offset, LEFT|attr);
@@ -312,7 +312,7 @@ void menuModelSensor(event_t event)
 
       case SENSOR_FIELD_PARAM4:
       {
-        drawStringWithIndex(0, y, NO_INDENT(STR_SOURCE), k-SENSOR_FIELD_PARAM1+1);
+        drawStringWithIndex(0, y, STR_SOURCE, k-SENSOR_FIELD_PARAM1+1);
         int8_t & source = sensor->calc.sources[k-SENSOR_FIELD_PARAM1];
         if (attr) {
           source = checkIncDec(event, source, -MAX_TELEMETRY_SENSORS, MAX_TELEMETRY_SENSORS, EE_MODEL|NO_INCDEC_MARKS, isSensorAvailable);
@@ -403,7 +403,7 @@ void menuModelTelemetryFrsky(event_t event)
 
   MENU(STR_MENUTELEMETRY, menuTabModel, MENU_MODEL_TELEMETRY_FRSKY, ITEM_TELEMETRY_MAX, { TELEMETRY_TYPE_ROWS RSSI_ROWS SENSORS_ROWS VARIO_ROWS });
 
-  for (uint8_t i=0; i<NUM_BODY_LINES; i++) {
+  for (uint32_t i=0; i<NUM_BODY_LINES; i++) {
     coord_t y = MENU_HEADER_HEIGHT + 1 + i*FH;
     int k = i + menuVerticalOffset;
     for (int j=0; j<=k; j++) {
@@ -519,10 +519,10 @@ void menuModelTelemetryFrsky(event_t event)
         if (g_model.moduleData[INTERNAL_MODULE].type != MODULE_TYPE_XJT &&
           g_model.moduleData[EXTERNAL_MODULE].type == MODULE_TYPE_MULTIMODULE  &&
           g_model.moduleData[EXTERNAL_MODULE].getMultiProtocol(false) == MM_RF_PROTO_FS_AFHDS2A)
-          lcdDrawTextAlignedLeft(y, PSTR("RSNR"));
+          lcdDrawTextAlignedLeft(y, "RSNR");
         else
 #endif
-        lcdDrawTextAlignedLeft(y, PSTR("RSSI"));
+        lcdDrawTextAlignedLeft(y, "RSSI");
         break;
 
       case ITEM_TELEMETRY_RSSI_ALARM1:
@@ -548,7 +548,7 @@ void menuModelTelemetryFrsky(event_t event)
         break;
 
       case ITEM_TELEMETRY_VARIO_SOURCE:
-        lcdDrawTextAlignedLeft(y, STR_SOURCE);
+        lcdDrawTextAlignedLeft(y, INDENT TR_SOURCE);
         drawSource(TELEM_COL2, y, g_model.frsky.varioSource ? MIXSRC_FIRST_TELEM+3*(g_model.frsky.varioSource-1) : 0, attr);
         if (attr) {
           g_model.frsky.varioSource = checkIncDec(event, g_model.frsky.varioSource, 0, MAX_TELEMETRY_SENSORS, EE_MODEL|NO_INCDEC_MARKS, isSensorAvailable);

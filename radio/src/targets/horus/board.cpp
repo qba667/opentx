@@ -140,7 +140,7 @@ void boardInit()
                          AUDIO_RCC_AHB1Periph |
                          KEYS_RCC_AHB1Periph |
                          ADC_RCC_AHB1Periph |
-                         SERIAL_RCC_AHB1Periph |
+                         AUX_SERIAL_RCC_AHB1Periph |
                          TELEMETRY_RCC_AHB1Periph |
                          TRAINER_RCC_AHB1Periph |
                          BT_RCC_AHB1Periph |
@@ -156,7 +156,7 @@ void boardInit()
                          ADC_RCC_APB1Periph |
                          TIMER_2MHz_RCC_APB1Periph |
                          AUDIO_RCC_APB1Periph |
-                         SERIAL_RCC_APB1Periph |
+                         AUX_SERIAL_RCC_APB1Periph |
                          TELEMETRY_RCC_APB1Periph |
                          TRAINER_RCC_APB1Periph |
                          AUDIO_RCC_APB1Periph |
@@ -182,7 +182,7 @@ void boardInit()
   // i2cInit();
 
 #if defined(DEBUG)
-  serial2Init(0, 0); // default serial mode (None if DEBUG not defined)
+  auxSerialInit(0, 0); // default serial mode (None if DEBUG not defined)
 #endif
 
   __enable_irq();
@@ -197,6 +197,15 @@ void boardInit()
   memset(&g_FATFS_Obj, 0, sizeof(g_FATFS_Obj));
 
   keysInit();
+
+#if NUM_PWMSTICKS > 0
+  sticksPwmInit();
+  delay_ms(20);
+  if (pwm_interrupt_count < 32) {
+    sticks_pwm_disabled = true;
+  }
+#endif
+
   adcInit();
   lcdInit();
   backlightInit();
@@ -232,47 +241,11 @@ void boardOff()
   BACKLIGHT_DISABLE();
 
   while (pwrPressed()) {
-    wdt_reset();
+    WDG_RESET();
   }
 
   SysTick->CTRL = 0; // turn off systick
   pwrOff();
-}
-
-uint8_t currentTrainerMode = 0xff;
-
-void checkTrainerSettings()
-{
-  uint8_t requiredTrainerMode = g_model.trainerMode;
-  if (requiredTrainerMode != currentTrainerMode) {
-    switch (currentTrainerMode) {
-      case TRAINER_MODE_MASTER_TRAINER_JACK:
-        stop_trainer_capture();
-        break;
-      case TRAINER_MODE_SLAVE:
-        stop_trainer_ppm();
-        break;
-      case TRAINER_MODE_MASTER_BATTERY_COMPARTMENT:
-        serial2Stop();
-    }
-
-    currentTrainerMode = requiredTrainerMode;
-    switch (requiredTrainerMode) {
-      case TRAINER_MODE_SLAVE:
-        init_trainer_ppm();
-        break;
-      case TRAINER_MODE_MASTER_BATTERY_COMPARTMENT:
-        if (g_eeGeneral.serial2Mode == UART_MODE_SBUS_TRAINER) {
-          serial2SbusInit();
-          break;
-        }
-        // no break
-      default:
-        // master is default
-        init_trainer_capture();
-        break;
-    }
-  }
 }
 
 uint16_t getBatteryVoltage()

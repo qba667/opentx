@@ -18,8 +18,7 @@
  * GNU General Public License for more details.
  */
 
-#ifndef _MENUS_H_
-#define _MENUS_H_
+#pragma once
 
 #include "keys.h"
 
@@ -41,9 +40,7 @@ typedef uint8_t vertpos_t;
 
 typedef void (*MenuHandlerFunc)(event_t event);
 
-#if defined(CPUARM)
 extern tmr10ms_t menuEntryTime;
-#endif
 
 extern vertpos_t menuVerticalPosition;
 extern horzpos_t menuHorizontalPosition;
@@ -65,24 +62,22 @@ inline MenuHandlerFunc lastPopMenu()
 }
 
 void onMainViewMenu(const char * result);
-
 void menuFirstCalib(event_t event);
 void menuMainView(event_t event);
-void menuViewTelemetryFrsky(event_t event);
-void menuViewTelemetryMavlink(event_t event);
+void menuViewTelemetry(event_t event);
 void menuSpecialFunctions(event_t event, CustomFunctionData * functions, CustomFunctionsContext * functionsContext);
 
 enum MenuRadioIndexes
 {
-  MENU_RADIO_SETUP,
+#if defined(RADIO_TOOLS)
+  MENU_RADIO_TOOLS,
+#endif
   CASE_SDCARD(MENU_RADIO_SD_MANAGER)
-  CASE_CPUARM(MENU_RADIO_SPECIAL_FUNCTIONS)
+  MENU_RADIO_SETUP,
+  MENU_RADIO_SPECIAL_FUNCTIONS,
   MENU_RADIO_TRAINER,
+  MENU_RADIO_HARDWARE,
   MENU_RADIO_VERSION,
-  MENU_RADIO_SWITCHES_TEST,
-  MENU_RADIO_ANALOGS_TEST,
-  CASE_CPUARM(MENU_RADIO_HARDWARE)
-  MENU_RADIO_CALIBRATION,
   MENU_RADIO_PAGES_COUNT
 };
 
@@ -94,19 +89,8 @@ void menuRadioVersion(event_t event);
 void menuRadioDiagKeys(event_t event);
 void menuRadioDiagAnalogs(event_t event);
 void menuRadioHardware(event_t event);
+void menuRadioTools(event_t event);
 void menuRadioCalibration(event_t event);
-
-static const MenuHandlerFunc menuTabGeneral[] PROGMEM = {
-  menuRadioSetup,
-  CASE_SDCARD(menuRadioSdManager)
-  CASE_CPUARM(menuRadioSpecialFunctions)
-  menuRadioTrainer,
-  menuRadioVersion,
-  menuRadioDiagKeys,
-  menuRadioDiagAnalogs,
-  CASE_CPUARM(menuRadioHardware)
-  menuRadioCalibration
-};
 
 enum MenuModelIndexes {
   MENU_MODEL_SELECT,
@@ -116,16 +100,14 @@ enum MenuModelIndexes {
   MENU_MODEL_INPUTS,
   MENU_MODEL_MIXES,
   MENU_MODEL_OUTPUTS,
-  CASE_CURVES(MENU_MODEL_CURVES)
+  MENU_MODEL_CURVES,
   MENU_MODEL_LOGICAL_SWITCHES,
   MENU_MODEL_SPECIAL_FUNCTIONS,
 #if defined(LUA_MODEL_SCRIPTS)
   MENU_MODEL_CUSTOM_SCRIPTS,
 #endif
-  CASE_FRSKY(MENU_MODEL_TELEMETRY_FRSKY)
-  CASE_MAVLINK(MENU_MODEL_TELEMETRY_MAVLINK)
-  CASE_CPUARM(MENU_MODEL_DISPLAY)
-  CASE_TEMPLATES(MENU_MODEL_TEMPLATES)
+  MENU_MODEL_TELEMETRY,
+  MENU_MODEL_DISPLAY,
   MENU_MODEL_PAGES_COUNT
 };
 
@@ -144,35 +126,17 @@ void menuModelGVars(event_t event);
 void menuModelLogicalSwitches(event_t event);
 void menuModelSpecialFunctions(event_t event);
 void menuModelCustomScripts(event_t event);
-void menuModelTelemetryFrsky(event_t event);
-void menuModelTelemetryMavlink(event_t event);
+void menuModelTelemetry(event_t event);
 void menuModelDisplay(event_t event);
 void menuModelTemplates(event_t event);
 void menuModelGVarOne(event_t event);
-
-static const MenuHandlerFunc menuTabModel[] PROGMEM = {
-  menuModelSelect,
-  menuModelSetup,
-  CASE_HELI(menuModelHeli)
-  CASE_FLIGHT_MODES(menuModelFlightModesAll)
-  menuModelExposAll,
-  menuModelMixAll,
-  menuModelLimits,
-  CASE_CURVES(menuModelCurvesAll)
-  menuModelLogicalSwitches,
-  menuModelSpecialFunctions,
-#if defined(LUA_MODEL_SCRIPTS)
-  menuModelCustomScripts,
-#endif
-  CASE_FRSKY(menuModelTelemetryFrsky)
-  CASE_MAVLINK(menuModelTelemetryMavlink)
-  CASE_CPUARM(menuModelDisplay)
-  CASE_TEMPLATES(menuModelTemplates)
-};
-
 void menuStatisticsView(event_t event);
 void menuStatisticsDebug(event_t event);
 void menuStatisticsDebug2(event_t event);
+#if !defined(PCBI6X)
 void menuAboutView(event_t event);
+#endif
 
-#endif // _MENUS_H_
+
+extern const MenuHandlerFunc menuTabModel[MENU_MODEL_PAGES_COUNT];
+extern const MenuHandlerFunc menuTabGeneral[MENU_RADIO_PAGES_COUNT];

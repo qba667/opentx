@@ -1,7 +1,7 @@
 <!DOCTYPE RCC><RCC version="1.0">
   <qresource prefix="/">
     <file>images/customize.png</file>
-    <file>icon.png</file>
+    <file alias="icon.png">images/icon.png</file>
     <file>../../CREDITS.txt</file>
     <file>../releasenotes.txt</file>
     <file>images/screenshot.png</file>
@@ -97,6 +97,18 @@
     <file>images/simulator/9X/9xdl-rd.png</file>
     <file>images/simulator/9X/9xdr-rd.png</file>
     <file>images/simulator/9X/9xdt-rd.png</file>
+    <file>images/simulator/I6X/i6x_left.png</file>
+    <file>images/simulator/I6X/i6x_left_up.png</file>
+    <file>images/simulator/I6X/i6x_left_down.png</file>
+    <file>images/simulator/I6X/i6x_left_bind.png</file>
+    <file>images/simulator/I6X/i6x_left_photo.png</file>
+    <file>images/simulator/I6X/i6x_right.png</file>
+    <file>images/simulator/I6X/i6x_right_ok.png</file>
+    <file>images/simulator/I6X/i6x_right_cancel.png</file>
+    <file>images/simulator/I6X/i6x_frame_left.png</file>
+    <file>images/simulator/I6X/i6x_frame_right.png</file>
+    <file>images/simulator/I6X/i6x_frame_top.png</file>
+    <file>images/simulator/I6X/i6x_frame_bottom.png</file>
     <file>images/simulator/9X/9xmenu.png</file>
     <file>images/simulator/9X/9xmenumenu.png</file>
     <file>images/simulator/9X/9xmenuexit.png</file>
@@ -136,6 +148,18 @@
     <file>images/simulator/X9E/right.png</file>
     <file>images/simulator/X9E/right_enter.png</file>
     <file>images/simulator/X9E/top.png</file>
+    <file>images/simulator/XLITE/bottom.png</file>
+    <file>images/simulator/XLITE/left.png</file>
+    <file>images/simulator/XLITE/left_scrnshot.png</file>
+    <file>images/simulator/XLITE/right.png</file>
+    <file>images/simulator/XLITE/right_ent.png</file>
+    <file>images/simulator/XLITE/top.png</file>
+    <file>images/simulator/XLITE/right_exit.png</file>
+    <file>images/simulator/XLITE/right_shift.png</file>
+    <file>images/simulator/XLITE/right_right.png</file>
+    <file>images/simulator/XLITE/right_left.png</file>
+    <file>images/simulator/XLITE/right_up.png</file>
+    <file>images/simulator/XLITE/right_down.png</file>
     <file>images/wizard/ailerons.png</file>
     <file>images/wizard/airbrakes.png</file>
     <file>images/wizard/elevons.png</file> 
@@ -235,6 +259,7 @@
     <file>images/library/10802.png</file>
     <file>themes/default/style.css</file>
     <file>themes/default/style-osx.css</file>
+    <file>themes/default/modelprt.css</file>
     <file>themes/monochrome/16/paintbrush.png</file>
     <file>themes/monochrome/16/open.png</file>
     <file>themes/monochrome/16/edit.png</file>

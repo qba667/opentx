@@ -3,49 +3,33 @@ set(GUI_SRC
   lcd.cpp
   splash.cpp
   fonts.cpp
-  navigation.cpp
   popups.cpp
   widgets.cpp
   menus.cpp
   menu_model.cpp
   model_select.cpp
   model_setup.cpp
+  model_outputs.cpp
   model_logical_switches.cpp
   model_special_functions.cpp
   model_telemetry.cpp
   menu_radio.cpp
   radio_setup.cpp
-  radio_trainer.cpp
   radio_version.cpp
   radio_calibration.cpp
   view_main.cpp
   view_statistics.cpp
   )
 
-if(GUI_DIR STREQUAL 128x64)
-  if (ARCH STREQUAL ARM)
-    set(GUI_SRC
-      ${GUI_SRC}
-      model_outputs_arm.cpp
-      )
-  else()
-    set(GUI_SRC
-      ${GUI_SRC}
-      model_outputs_avr.cpp
-      )
-  endif()
-else()
-  set(GUI_SRC
-    ${GUI_SRC}
-    model_outputs.cpp
-    )
-endif()
-
 set(SRC
   ${SRC}
   gui/common/widgets.cpp
-  gui/common/navigation.cpp
+  gui/navigation/navigation_${NAVIGATION_TYPE}.cpp
+  gui/navigation/common.cpp
   )
+
+string(TOUPPER ${NAVIGATION_TYPE} NAVIGATION_TYPE)
+add_definitions(-DNAVIGATION_${NAVIGATION_TYPE})
 
 include_directories(gui gui/${GUI_DIR})
 

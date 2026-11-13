@@ -54,7 +54,7 @@ void telemetryPortInit(uint32_t baudrate, uint8_t mode)
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_Init(TELEMETRY_DIR_GPIO, &GPIO_InitStructure);
-  GPIO_ResetBits(TELEMETRY_DIR_GPIO, TELEMETRY_DIR_GPIO_PIN);
+  TELEMETRY_DIR_INPUT();
 
   USART_InitStructure.USART_BaudRate = baudrate;
   if (mode & TELEMETRY_SERIAL_8E2) {
@@ -89,7 +89,7 @@ void telemetryPortSetDirectionInput()
   TELEMETRY_USART->CR1 |= USART_CR1_RE; // turn on receiver
 }
 
-void sportSendBuffer(uint8_t * buffer, uint32_t count)
+void sportSendBuffer(const uint8_t * buffer, uint32_t count)
 {
   telemetryPortSetDirectionOutput();
 
@@ -127,7 +127,7 @@ extern "C" void TELEMETRY_DMA_TX_IRQHandler(void)
   if (DMA_GetITStatus(TELEMETRY_DMA_Stream_TX, TELEMETRY_DMA_TX_FLAG_TC)) {
     DMA_ClearITPendingBit(TELEMETRY_DMA_Stream_TX, TELEMETRY_DMA_TX_FLAG_TC);
     TELEMETRY_USART->CR1 |= USART_CR1_TCIE;
-    if (telemetryProtocol == PROTOCOL_FRSKY_SPORT) {
+    if (telemetryProtocol == PROTOCOL_TELEMETRY_FRSKY_SPORT) {
       outputTelemetryBufferSize = 0;
       outputTelemetryBufferTrigger = 0x7E;
     }
@@ -157,7 +157,7 @@ extern "C" void TELEMETRY_USART_IRQHandler(void)
     else {
       telemetryFifo.push(data);
 #if defined(LUA)
-      if (telemetryProtocol == PROTOCOL_FRSKY_SPORT) {
+      if (telemetryProtocol == PROTOCOL_TELEMETRY_FRSKY_SPORT) {
         static uint8_t prevdata;
         if (prevdata == 0x7E && outputTelemetryBufferSize > 0 && data == outputTelemetryBufferTrigger) {
           sportSendBuffer(outputTelemetryBuffer, outputTelemetryBufferSize);
@@ -173,10 +173,10 @@ extern "C" void TELEMETRY_USART_IRQHandler(void)
 // TODO we should have telemetry in an higher layer, functions above should move to a sport_driver.cpp
 uint8_t telemetryGetByte(uint8_t * byte)
 {
-#if defined(SERIAL2)
-  if (telemetryProtocol == PROTOCOL_FRSKY_D_SECONDARY) {
-    if (serial2Mode == UART_MODE_TELEMETRY)
-      return serial2RxFifo.pop(*byte);
+#if defined(AUX_SERIAL)
+  if (telemetryProtocol == PROTOCOL_TELEMETRY_FRSKY_D_SECONDARY) {
+    if (auxSerialMode == UART_MODE_TELEMETRY)
+      return auxSerialRxFifo.pop(*byte);
     else
       return false;
   }

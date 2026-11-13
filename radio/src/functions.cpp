@@ -22,9 +22,7 @@
 
 CustomFunctionsContext modelFunctionsContext = { 0 };
 
-#if defined(CPUARM)
 CustomFunctionsContext globalFunctionsContext = { 0 };
-#endif
 
 #if defined(DEBUG)
 /*
@@ -38,7 +36,7 @@ void testFunc()
 }
 #endif
 
-#if defined(VOICE)
+#if !defined(PCBI6X) || defined(DFPLAYER)
 PLAY_FUNCTION(playValue, source_t idx)
 {
   if (IS_FAI_FORBIDDEN(idx))
@@ -49,7 +47,6 @@ PLAY_FUNCTION(playValue, source_t idx)
 
   getvalue_t val = getValue(idx);
 
-#if defined(CPUARM)
   if (idx >= MIXSRC_FIRST_TELEM) {
     TelemetrySensor & telemetrySensor = g_model.telemetrySensors[(idx-MIXSRC_FIRST_TELEM) / 3];
     uint8_t attr = 0;
@@ -89,142 +86,32 @@ PLAY_FUNCTION(playValue, source_t idx)
     }
     PLAY_NUMBER(val, 0, 0);
   }
-#else
-  switch (idx) {
-    case MIXSRC_FIRST_TELEM+TELEM_TX_VOLTAGE-1:
-      PLAY_NUMBER(val, 1+UNIT_VOLTS, PREC1);
-      break;
-    case MIXSRC_FIRST_TELEM+TELEM_TIMER1-1:
-    case MIXSRC_FIRST_TELEM+TELEM_TIMER2-1:
-      PLAY_DURATION(val, 0);
-      break;
-#if defined(TELEMETRY_FRSKY)
-    case MIXSRC_FIRST_TELEM+TELEM_RSSI_TX-1:
-    case MIXSRC_FIRST_TELEM+TELEM_RSSI_RX-1:
-      PLAY_NUMBER(val, 1+UNIT_DB, 0);
-      break;
-    case MIXSRC_FIRST_TELEM+TELEM_MIN_A1-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MIN_A2-1:
-      idx -= TELEM_MIN_A1-TELEM_A1;
-      // no break
-    case MIXSRC_FIRST_TELEM+TELEM_A1-1:
-    case MIXSRC_FIRST_TELEM+TELEM_A2-1:
-      if (TELEMETRY_STREAMING()) {
-        idx -= (MIXSRC_FIRST_TELEM+TELEM_A1-1);
-        uint8_t att = 0;
-        int16_t converted_value =  div_and_round(applyChannelRatio(idx, val), 10);
-        if (ANA_CHANNEL_UNIT(idx) < UNIT_RAW) {
-          att = PREC1;
-        }
-        PLAY_NUMBER(converted_value, 1+ANA_CHANNEL_UNIT(idx), att);
-      }
-      break;
-    case MIXSRC_FIRST_TELEM+TELEM_CELL-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MIN_CELL-1:
-      PLAY_NUMBER(div_and_round(val, 10), 1+UNIT_VOLTS, PREC1);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_VFAS-1:
-    case MIXSRC_FIRST_TELEM+TELEM_CELLS_SUM-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MIN_CELLS_SUM-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MIN_VFAS-1:
-      PLAY_NUMBER(val, 1+UNIT_VOLTS, PREC1);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_CURRENT-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MAX_CURRENT-1:
-      PLAY_NUMBER(val, 1+UNIT_AMPS, PREC1);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_ACCx-1:
-    case MIXSRC_FIRST_TELEM+TELEM_ACCy-1:
-    case MIXSRC_FIRST_TELEM+TELEM_ACCz-1:
-      PLAY_NUMBER(div_and_round(val, 10), 1+UNIT_G, PREC1);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_VSPEED-1:
-      PLAY_NUMBER(div_and_round(val, 10), 1+UNIT_METERS_PER_SECOND, PREC1);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_ASPEED-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MAX_ASPEED-1:
-      PLAY_NUMBER(val/10, 1+UNIT_KTS, 0);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_CONSUMPTION-1:
-      PLAY_NUMBER(val, 1+UNIT_MAH, 0);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_POWER-1:
-      PLAY_NUMBER(val, 1+UNIT_WATTS, 0);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_ALT-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MIN_ALT-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MAX_ALT-1:
-#if defined(WS_HOW_HIGH)
-      if (IS_IMPERIAL_ENABLE() && IS_USR_PROTO_WS_HOW_HIGH())
-        PLAY_NUMBER(val, 1+UNIT_FEET, 0);
-      else
-#endif
-        PLAY_NUMBER(val, 1+UNIT_DIST, 0);
-      break;
-
-    case MIXSRC_FIRST_TELEM+TELEM_RPM-1:
-    case MIXSRC_FIRST_TELEM+TELEM_MAX_RPM-1:
-    {
-      getvalue_t rpm = val;
-      if (rpm > 100)
-        rpm = 10 * div_and_round(rpm, 10);
-      if (rpm > 1000)
-        rpm = 10 * div_and_round(rpm, 10);
-      PLAY_NUMBER(rpm, 1+UNIT_RPMS, 0);
-      break;
-    }
-
-    case MIXSRC_FIRST_TELEM+TELEM_HDG-1:
-      PLAY_NUMBER(val, 1+UNIT_HDG, 0);
-      break;
-
-    default:
-    {
-      uint8_t unit = 1;
-      if (idx < MIXSRC_GVAR1)
-        val = calcRESXto100(val);
-      if (idx >= MIXSRC_FIRST_TELEM+TELEM_ALT-1 && idx <= MIXSRC_FIRST_TELEM+TELEM_GPSALT-1)
-        unit = idx - (MIXSRC_FIRST_TELEM+TELEM_ALT-1);
-      else if (idx >= MIXSRC_FIRST_TELEM+TELEM_MAX_T1-1 && idx <= MIXSRC_FIRST_TELEM+TELEM_MAX_DIST-1)
-        unit = 3 + idx - (MIXSRC_FIRST_TELEM+TELEM_MAX_T1-1);
-
-      unit = pgm_read_byte(bchunit_ar+unit);
-      PLAY_NUMBER(val, unit == UNIT_RAW ? 0 : unit+1, 0);
-      break;
-    }
-#else
-    default:
-      PLAY_NUMBER(val, 0, 0);
-      break;
-#endif
-  }
-#endif
 }
 #endif
 
-#if defined(CPUARM)
+#if defined(VOICE)
 void playCustomFunctionFile(const CustomFunctionData * sd, uint8_t id)
 {
   if (sd->play.name[0] != '\0') {
-    char filename[sizeof(SOUNDS_PATH)+sizeof(sd->play.name)+sizeof(SOUNDS_EXT)] = SOUNDS_PATH "/";
-    strncpy(filename+SOUNDS_PATH_LNG_OFS, currentLanguagePack->id, 2);
-    strncpy(filename+sizeof(SOUNDS_PATH), sd->play.name, sizeof(sd->play.name));
-    filename[sizeof(SOUNDS_PATH)+sizeof(sd->play.name)] = '\0';
-    strcat(filename+sizeof(SOUNDS_PATH), SOUNDS_EXT);
-    PLAY_FILE(filename, sd->func==FUNC_BACKGND_MUSIC ? PLAY_BACKGROUND : 0, id);
+    char filename[sizeof(SOUNDS_PATH) + LEN_FUNCTION_NAME + sizeof(SOUNDS_EXT)] = SOUNDS_PATH "/";
+    strncpy(filename + SOUNDS_PATH_LNG_OFS, currentLanguagePack->id, 2);
+    strncpy(filename + sizeof(SOUNDS_PATH), sd->play.name, LEN_FUNCTION_NAME);
+    filename[sizeof(SOUNDS_PATH) + LEN_FUNCTION_NAME] = '\0';
+    strcat(filename + sizeof(SOUNDS_PATH), SOUNDS_EXT);
+    PLAY_FILE(filename, sd->func == FUNC_BACKGND_MUSIC ? PLAY_BACKGROUND : 0, id);
   }
+}
+#elif defined(DFPLAYER)
+void playCustomFunctionFile(const CustomFunctionData * sd, uint8_t id)
+{
+  uint16_t val = sd->all.val;
+ if (val != 0) { // Custom files start at DFPLAYER_CUSTOM_FILE_INDEX
+    PLAY_FILE(val, id);
+ }
 }
 #endif
 
-#if defined(CPUARM)
+#if defined(VOICE) || defined(PCBI6X)
 bool isRepeatDelayElapsed(const CustomFunctionData * functions, CustomFunctionsContext & functionsContext, uint8_t index)
 {
   const CustomFunctionData * cfn = &functions[index];
@@ -245,27 +132,19 @@ bool isRepeatDelayElapsed(const CustomFunctionData * functions, CustomFunctionsC
 #define isRepeatDelayElapsed(...) true
 #endif
 
-#if defined(CPUARM)
 #define VOLUME_HYSTERESIS 10            // how much must a input value change to actually be considered for new volume setting
 getvalue_t requiredSpeakerVolumeRawLast = 1024 + 1; //initial value must be outside normal range
-#endif
 
-#if defined(CPUARM)
 void evalFunctions(const CustomFunctionData * functions, CustomFunctionsContext & functionsContext)
-#else
-#define functions g_model.customFn
-#define functionsContext modelFunctionsContext
-void evalFunctions()
-#endif
 {
   MASK_FUNC_TYPE newActiveFunctions  = 0;
   MASK_CFN_TYPE  newActiveSwitches = 0;
 
-#if defined(CPUARM)
+#if defined(DFPLAYER)
   uint8_t playFirstIndex = (functions == g_model.customFn ? 1 : 1+MAX_SPECIAL_FUNCTIONS);
   #define PLAY_INDEX   (i+playFirstIndex)
 #else
-  #define PLAY_INDEX   (i+1)
+  #define PLAY_INDEX   0
 #endif
 
 #if defined(ROTARY_ENCODERS) && defined(GVARS)
@@ -273,34 +152,30 @@ void evalFunctions()
 #endif
 
 #if defined(OVERRIDE_CHANNEL_FUNCTION)
-  for (uint8_t i=0; i<MAX_OUTPUT_CHANNELS; i++) {
+  for (uint32_t i=0; i<MAX_OUTPUT_CHANNELS; i++) {
     safetyCh[i] = OVERRIDE_CHANNEL_UNDEFINED;
   }
 #endif
 
 #if defined(GVARS)
-  for (uint8_t i=0; i<NUM_TRIMS; i++) {
+  for (uint32_t i=0; i<NUM_TRIMS; i++) {
     trimGvar[i] = -1;
   }
 #endif
 
-  for (uint8_t i=0; i<MAX_SPECIAL_FUNCTIONS; i++) {
+  for (uint32_t i=0; i<MAX_SPECIAL_FUNCTIONS; i++) {
     const CustomFunctionData * cfn = &functions[i];
     swsrc_t swtch = CFN_SWITCH(cfn);
     if (swtch) {
       MASK_CFN_TYPE switch_mask = ((MASK_CFN_TYPE)1 << i);
 
-#if defined(CPUARM)
       bool active = getSwitch(swtch, IS_PLAY_FUNC(CFN_FUNC(cfn)) ? GETSWITCH_MIDPOS_DELAY : 0);
-#else
-      bool active = getSwitch(swtch);
-#endif
 
       if (HAS_ENABLE_PARAM(CFN_FUNC(cfn))) {
         active &= (bool)CFN_ACTIVE(cfn);
       }
 
-      if (active || IS_PLAY_BOTH_FUNC(CFN_FUNC(cfn))) {
+      if (active) {
 
         switch (CFN_FUNC(cfn)) {
 
@@ -333,18 +208,12 @@ void evalFunctions()
             switch (CFN_PARAM(cfn)) {
               case FUNC_RESET_TIMER1:
               case FUNC_RESET_TIMER2:
-#if defined(CPUARM)
               case FUNC_RESET_TIMER3:
-#endif
                 timerReset(CFN_PARAM(cfn));
                 break;
               case FUNC_RESET_FLIGHT:
               	if (!(functionsContext.activeSwitches & switch_mask)) {
-#if defined(CPUARM)
                   mainRequestFlags |= (1 << REQUEST_FLIGHT_RESET);     // on systems with threads flightReset() must not be called from the mixers thread!
-#else
-                  flightReset();
-#endif // defined(CPUARM)
                 }
                 break;
 #if defined(TELEMETRY_FRSKY)
@@ -362,35 +231,21 @@ void evalFunctions()
                 break;
 #endif
             }
-#if defined(CPUARM)
             if (CFN_PARAM(cfn)>=FUNC_RESET_PARAM_FIRST_TELEM) {
               uint8_t item = CFN_PARAM(cfn)-FUNC_RESET_PARAM_FIRST_TELEM;
               if (item < MAX_TELEMETRY_SENSORS) {
                 telemetryItems[item].clear();
               }
             }
-#endif
             break;
 
-#if defined(CPUARM)
           case FUNC_SET_TIMER:
             timerSet(CFN_TIMER_INDEX(cfn), CFN_PARAM(cfn));
             break;
 
           case FUNC_SET_FAILSAFE:
-          {
-            unsigned int moduleIndex = CFN_PARAM(cfn);
-            if (moduleIndex < NUM_MODULES) {
-              for (int ch=0; ch<MAX_OUTPUT_CHANNELS; ch++) {
-                if (ch < g_model.moduleData[moduleIndex].channelsStart || ch >= NUM_CHANNELS(moduleIndex) + g_model.moduleData[moduleIndex].channelsStart) {
-                  g_model.moduleData[moduleIndex].failsafeChannels[ch] = 0;
-                }
-                else if (g_model.moduleData[moduleIndex].failsafeChannels[ch] < FAILSAFE_CHANNEL_HOLD) {
-                  g_model.moduleData[moduleIndex].failsafeChannels[ch] = channelOutputs[ch];
-                }
-              }
-            }
-          }
+            setCustomFailsafe(CFN_PARAM(cfn));
+            break;
 
 #if defined(DANGEROUS_MODULE_FUNCTIONS)
           case FUNC_RANGECHECK:
@@ -398,12 +253,11 @@ void evalFunctions()
           {
             unsigned int moduleIndex = CFN_PARAM(cfn);
             if (moduleIndex < NUM_MODULES) {
-              moduleFlag[moduleIndex] = 1 + CFN_FUNC(cfn) - FUNC_RANGECHECK;
+              moduleState[moduleIndex].mode = 1 + CFN_FUNC(cfn) - FUNC_RANGECHECK;
             }
             break;
           }
 #endif  
-#endif  // defined(CPUARM)
 
 #if defined(GVARS)
           case FUNC_ADJUST_GVAR:
@@ -415,39 +269,26 @@ void evalFunctions()
             }
             else if (CFN_GVAR_MODE(cfn) == FUNC_ADJUST_GVAR_INCDEC) {
               if (!(functionsContext.activeSwitches & switch_mask)) {
-#if defined(CPUARM)
                 SET_GVAR(CFN_GVAR_INDEX(cfn), limit<int16_t>(MODEL_GVAR_MIN(CFN_GVAR_INDEX(cfn)), GVAR_VALUE(CFN_GVAR_INDEX(cfn), getGVarFlightMode(mixerCurrentFlightMode, CFN_GVAR_INDEX(cfn))) + CFN_PARAM(cfn), MODEL_GVAR_MAX(CFN_GVAR_INDEX(cfn))), mixerCurrentFlightMode);
-#else
-                SET_GVAR(CFN_GVAR_INDEX(cfn), GVAR_VALUE(CFN_GVAR_INDEX(cfn), getGVarFlightMode(mixerCurrentFlightMode, CFN_GVAR_INDEX(cfn))) + (CFN_PARAM(cfn) ? +1 : -1), mixerCurrentFlightMode);
-#endif
               }
             }
-            else if (CFN_PARAM(cfn) >= MIXSRC_TrimRud && CFN_PARAM(cfn) <= MIXSRC_TrimAil) {
-              trimGvar[CFN_PARAM(cfn)-MIXSRC_TrimRud] = CFN_GVAR_INDEX(cfn);
+            else if (CFN_PARAM(cfn) >= MIXSRC_FIRST_TRIM && CFN_PARAM(cfn) <= MIXSRC_LAST_TRIM) {
+              trimGvar[CFN_PARAM(cfn)-MIXSRC_FIRST_TRIM] = CFN_GVAR_INDEX(cfn);
             }
 #if defined(ROTARY_ENCODERS)
             else if (CFN_PARAM(cfn) >= MIXSRC_REa && CFN_PARAM(cfn) < MIXSRC_TrimRud) {
               int8_t scroll = rePreviousValues[CFN_PARAM(cfn)-MIXSRC_REa] - (rotencValue[CFN_PARAM(cfn)-MIXSRC_REa] / ROTARY_ENCODER_GRANULARITY);
               if (scroll) {
-#if defined(CPUARM)
                 SET_GVAR(CFN_GVAR_INDEX(cfn), limit<int16_t>(MODEL_GVAR_MIN(CFN_GVAR_INDEX(cfn)), GVAR_VALUE(CFN_GVAR_INDEX(cfn), getGVarFlightMode(mixerCurrentFlightMode, CFN_GVAR_INDEX(cfn))) + scroll, MODEL_GVAR_MAX(CFN_GVAR_INDEX(cfn))), mixerCurrentFlightMode);
-#else
-                SET_GVAR(CFN_GVAR_INDEX(cfn), GVAR_VALUE(CFN_GVAR_INDEX(cfn), getGVarFlightMode(mixerCurrentFlightMode, CFN_GVAR_INDEX(cfn))) + scroll, mixerCurrentFlightMode);
-#endif
               }
             }
 #endif
             else {
-#if defined(CPUARM)
               SET_GVAR(CFN_GVAR_INDEX(cfn), limit<int16_t>(MODEL_GVAR_MIN(CFN_GVAR_INDEX(cfn)), calcRESXto100(getValue(CFN_PARAM(cfn))), MODEL_GVAR_MAX(CFN_GVAR_INDEX(cfn))), mixerCurrentFlightMode);
-#else
-              SET_GVAR(CFN_GVAR_INDEX(cfn), calcRESXto100(getValue(CFN_PARAM(cfn))), mixerCurrentFlightMode);
-#endif
             }
             break;
 #endif
-
-#if defined(MASTER_VOLUME)
+#if defined(DFPLAYER) && defined(SF_VOLUME)
           case FUNC_VOLUME:
           {
             getvalue_t raw = getValue(CFN_PARAM(cfn));
@@ -459,11 +300,12 @@ void evalFunctions()
             break;
           }
 #endif
-
-#if defined(CPUARM) && defined(SDCARD)
+#if defined(SDCARD) || defined(PCBI6X)
           case FUNC_PLAY_SOUND:
+#if defined(DFPLAYER)
           case FUNC_PLAY_TRACK:
           case FUNC_PLAY_VALUE:
+#endif
 #if defined(HAPTIC)
           case FUNC_HAPTIC:
 #endif
@@ -471,26 +313,34 @@ void evalFunctions()
             if (isRepeatDelayElapsed(functions, functionsContext, i)) {
               if (!IS_PLAYING(PLAY_INDEX)) {
                 if (CFN_FUNC(cfn) == FUNC_PLAY_SOUND) {
+                  #if defined(PCBI6X)
+                  if (true) {
+                  #else
                   if (audioQueue.isEmpty()) {
+                  #endif
                     AUDIO_PLAY(AU_SPECIAL_SOUND_FIRST + CFN_PARAM(cfn));
                   }
                 }
+#if defined(DFPLAYER)
                 else if (CFN_FUNC(cfn) == FUNC_PLAY_VALUE) {
                   PLAY_VALUE(CFN_PARAM(cfn), PLAY_INDEX);
                 }
+#endif
 #if defined(HAPTIC)
                 else if (CFN_FUNC(cfn) == FUNC_HAPTIC) {
                   haptic.event(AU_SPECIAL_SOUND_LAST+CFN_PARAM(cfn));
                 }
 #endif
                 else {
+#if defined(DFPLAYER)
                   playCustomFunctionFile(cfn, PLAY_INDEX);
+#endif
                 }
               }
             }
             break;
           }
-
+#if !defined(PCBI6X)
           case FUNC_BACKGND_MUSIC:
             if (!(newActiveFunctions & (1 << FUNCTION_BACKGND_MUSIC))) {
               newActiveFunctions |= (1 << FUNCTION_BACKGND_MUSIC);
@@ -503,16 +353,15 @@ void evalFunctions()
           case FUNC_BACKGND_MUSIC_PAUSE:
             newActiveFunctions |= (1 << FUNCTION_BACKGND_MUSIC_PAUSE);
             break;
-
-#elif defined(VOICE)
+#endif
+#else
           case FUNC_PLAY_SOUND:
           case FUNC_PLAY_TRACK:
-          case FUNC_PLAY_BOTH:
           case FUNC_PLAY_VALUE:
           {
             tmr10ms_t tmr10ms = get_tmr10ms();
             uint8_t repeatParam = CFN_PLAY_REPEAT(cfn);
-            if (!functionsContext.lastFunctionTime[i] || (CFN_FUNC(cfn)==FUNC_PLAY_BOTH && active!=(bool)(functionsContext.activeSwitches&switch_mask)) || (repeatParam && (signed)(tmr10ms-functionsContext.lastFunctionTime[i])>=1000*repeatParam)) {
+            if (!functionsContext.lastFunctionTime[i] || (active!=(bool)(functionsContext.activeSwitches&switch_mask)) || (repeatParam && (signed)(tmr10ms-functionsContext.lastFunctionTime[i])>=1000*repeatParam)) {
               functionsContext.lastFunctionTime[i] = tmr10ms;
               uint8_t param = CFN_PARAM(cfn);
               if (CFN_FUNC(cfn) == FUNC_PLAY_SOUND) {
@@ -535,50 +384,40 @@ void evalFunctions()
             }
             break;
           }
-#else
-          case FUNC_PLAY_SOUND:
-          {
-            tmr10ms_t tmr10ms = get_tmr10ms();
-            uint8_t repeatParam = CFN_PLAY_REPEAT(cfn);
-            if (!functionsContext.lastFunctionTime[i] || (repeatParam && (signed)(tmr10ms-functionsContext.lastFunctionTime[i])>=1000*repeatParam)) {
-              functionsContext.lastFunctionTime[i] = tmr10ms;
-              AUDIO_PLAY(AU_SPECIAL_SOUND_FIRST+CFN_PARAM(cfn));
-            }
-            break;
-          }
-#endif
+#endif // PCBI6X || SDCARD
 
 #if defined(TELEMETRY_FRSKY) && defined(VARIO)
           case FUNC_VARIO:
-            newActiveFunctions |= (1 << FUNCTION_VARIO);
+            newActiveFunctions |= (1u << FUNCTION_VARIO);
             break;
 #endif
 
-#if defined(HAPTIC) && !defined(CPUARM)
-          case FUNC_HAPTIC:
-          {
-            tmr10ms_t tmr10ms = get_tmr10ms();
-            uint8_t repeatParam = CFN_PLAY_REPEAT(cfn);
-            if (!functionsContext.lastFunctionTime[i] || (repeatParam && (signed)(tmr10ms-functionsContext.lastFunctionTime[i])>=1000*repeatParam)) {
-              functionsContext.lastFunctionTime[i] = tmr10ms;
-              haptic.event(AU_SPECIAL_SOUND_LAST+CFN_PARAM(cfn));
-            }
-            break;
-          }
-#endif
 
-#if defined(SDCARD)
+#if defined(SDCARD) || defined(USB_LOGS)
           case FUNC_LOGS:
             if (CFN_PARAM(cfn)) {
-              newActiveFunctions |= (1 << FUNCTION_LOGS);
+              newActiveFunctions |= (1u << FUNCTION_LOGS);
               logDelay = CFN_PARAM(cfn);
             }
             break;
 #endif
 
           case FUNC_BACKLIGHT:
-            newActiveFunctions |= (1 << FUNCTION_BACKLIGHT);
+          {
+            newActiveFunctions |= (1u << FUNCTION_BACKLIGHT);
+            if (!CFN_PARAM(cfn)) {  // When no source is set, backlight works like original backlight and turn on regardless of backlight settings
+              requiredBacklightBright = BACKLIGHT_FORCED_ON;
+              break;
+            }
+
+            getvalue_t raw = getValue(CFN_PARAM(cfn));
+#if defined(COLORLCD)
+            requiredBacklightBright = (1024 - raw) * (BACKLIGHT_LEVEL_MAX - BACKLIGHT_LEVEL_MIN) / 2048;
+#else
+            requiredBacklightBright = (1024 - raw) * 100 / 2048;
+#endif
             break;
+          }
 
 #if defined(PCBTARANIS)
           case FUNC_SCREENSHOT:
@@ -587,7 +426,6 @@ void evalFunctions()
             }
             break;
 #endif
-
 #if defined(DEBUG)
           case FUNC_TEST:
             testFunc();
@@ -599,7 +437,7 @@ void evalFunctions()
       }
       else {
         functionsContext.lastFunctionTime[i] = 0;
-#if defined(CPUARM) && defined(DANGEROUS_MODULE_FUNCTIONS)
+#if defined(DANGEROUS_MODULE_FUNCTIONS)
         if (functionsContext.activeSwitches & switch_mask) {
           switch (CFN_FUNC(cfn)) {
             case FUNC_RANGECHECK:
@@ -607,7 +445,7 @@ void evalFunctions()
             {
               unsigned int moduleIndex = CFN_PARAM(cfn);
               if (moduleIndex < NUM_MODULES) {
-                moduleFlag[moduleIndex] = 0;
+                moduleState[moduleIndex].mode = 0;
               }
               break;
             }
@@ -622,13 +460,9 @@ void evalFunctions()
   functionsContext.activeFunctions  = newActiveFunctions;
 
 #if defined(ROTARY_ENCODERS) && defined(GVARS)
-  for (uint8_t i=0; i<ROTARY_ENCODERS; i++) {
+  for (uint32_t i=0; i<ROTARY_ENCODERS; i++) {
     rePreviousValues[i] = (rotencValue[i] / ROTARY_ENCODER_GRANULARITY);
   }
 #endif
 }
 
-#if !defined(CPUARM)
-#undef functions
-#undef functionsContext
-#endif

@@ -2,7 +2,7 @@
  * Copyright (C) OpenTX
  *
  * Based on code named
- *   th9x - http://code.google.com/p/th9x 
+ *   th9x - http://code.google.com/p/th9x
  *   er9x - http://code.google.com/p/er9x
  *   gruvin9x - http://code.google.com/p/gruvin9x
  *
@@ -27,15 +27,13 @@ extern uint8_t cliTracesEnabled;
 
 #ifdef __cplusplus
 #include "fifo.h"
-extern Fifo<uint8_t, 256> cliRxFifo;
-#include "tasks_arm.h"
-#define CLI_STACK_SIZE                 1000
-extern OS_TID cliTaskId;
-extern TaskStack<CLI_STACK_SIZE> cliStack;
+extern Fifo<uint8_t, 32> cliRxFifo;
+#include "tasks.h"
+// extern task_handle_t cliTaskId;
+// extern TASK_DEFINE_STACK(cliStack, CLI_STACK_SIZE);
 #endif
 
 void cliStart();
-void cliStackPaint();
-uint32_t cliStackFree();
+void handleCli();
 
 #endif // _CLI_H_

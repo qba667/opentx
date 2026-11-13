@@ -219,7 +219,7 @@
   #define PWM_IRQHandler                TIM5_IRQHandler
   #define PWM_IRQn                      TIM5_IRQn
   #define PWM_GPIOA_PINS                (GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3)
-  #define ADC_GPIOA_PINS                (ANALOGS_PWM_ENABLED() ? 0 : (GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3))
+  #define ADC_GPIOA_PINS                (STICKS_PWM_ENABLED() ? 0 : (GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3))
   #define ADC_GPIOC_PINS                (GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3)
   #define ADC_GPIOF_PINS                (GPIO_Pin_6 | GPIO_Pin_7) // | GPIO_Pin_8 | GPIO_Pin_9)
   #define ADC_CHANNEL_STICK_LH          ADC_Channel_0   // ADC3_IN0
@@ -258,8 +258,10 @@
   #define SPORT_UPDATE_RCC_AHB1Periph   RCC_AHB1Periph_GPIOH
   #define SPORT_UPDATE_PWR_GPIO         GPIOH
   #define SPORT_UPDATE_PWR_GPIO_PIN     GPIO_Pin_13  // PH.13
+  #define HAS_SPORT_UPDATE_CONNECTOR()  true
 #else
   #define SPORT_UPDATE_RCC_AHB1Periph   0
+  #define HAS_SPORT_UPDATE_CONNECTOR()  false
 #endif
 
 // PCBREV
@@ -283,19 +285,19 @@
 #endif
 
 // Serial Port (DEBUG)
-#define SERIAL_RCC_AHB1Periph           (RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_DMA1)
-#define SERIAL_RCC_APB1Periph           RCC_APB1Periph_USART3
-#define SERIAL_GPIO                     GPIOB
-#define SERIAL_GPIO_PIN_TX              GPIO_Pin_10 // PB.10
-#define SERIAL_GPIO_PIN_RX              GPIO_Pin_11 // PB.11
-#define SERIAL_GPIO_PinSource_TX        GPIO_PinSource10
-#define SERIAL_GPIO_PinSource_RX        GPIO_PinSource11
-#define SERIAL_GPIO_AF                  GPIO_AF_USART3
-#define SERIAL_USART                    USART3
-#define SERIAL_USART_IRQHandler         USART3_IRQHandler
-#define SERIAL_USART_IRQn               USART3_IRQn
-#define SERIAL_DMA_Stream_RX            DMA1_Stream1
-#define SERIAL_DMA_Channel_RX           DMA_Channel_4
+#define AUX_SERIAL_RCC_AHB1Periph           (RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_DMA1)
+#define AUX_SERIAL_RCC_APB1Periph           RCC_APB1Periph_USART3
+#define AUX_SERIAL_GPIO                     GPIOB
+#define AUX_SERIAL_GPIO_PIN_TX              GPIO_Pin_10 // PB.10
+#define AUX_SERIAL_GPIO_PIN_RX              GPIO_Pin_11 // PB.11
+#define AUX_SERIAL_GPIO_PinSource_TX        GPIO_PinSource10
+#define AUX_SERIAL_GPIO_PinSource_RX        GPIO_PinSource11
+#define AUX_SERIAL_GPIO_AF                  GPIO_AF_USART3
+#define AUX_SERIAL_USART                    USART3
+#define AUX_SERIAL_USART_IRQHandler         USART3_IRQHandler
+#define AUX_SERIAL_USART_IRQn               USART3_IRQn
+#define AUX_SERIAL_DMA_Stream_RX            DMA1_Stream1
+#define AUX_SERIAL_DMA_Channel_RX           DMA_Channel_4
 
 // Telemetry
 #define TELEMETRY_RCC_AHB1Periph        (RCC_AHB1Periph_GPIOD | RCC_AHB1Periph_DMA1)

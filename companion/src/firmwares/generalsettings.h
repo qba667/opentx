@@ -48,7 +48,7 @@ class TrainerMix {
     RawSwitch swtch;
     int weight;
     unsigned int mode;   // off, add-mode, subst-mode
-    void clear() { memset(this, 0, sizeof(TrainerMix)); }
+    void clear() { memset(reinterpret_cast<void *>(this), 0, sizeof(TrainerMix)); }
 };
 
 class TrainerData {
@@ -56,7 +56,7 @@ class TrainerData {
     TrainerData() { clear(); }
     int         calib[4];
     TrainerMix  mix[4];
-    void clear() { memset(this, 0, sizeof(TrainerData)); }
+    void clear() { memset(reinterpret_cast<void *>(this), 0, sizeof(TrainerData)); }
 };
 
 class GeneralSettings {
@@ -134,7 +134,6 @@ class GeneralSettings {
     unsigned int mAhWarn;
     unsigned int mAhUsed;
     unsigned int globalTimer;
-    bool bluetoothEnable;
     char bluetoothName[10+1];
     unsigned int bluetoothBaudrate;
     unsigned int bluetoothMode;

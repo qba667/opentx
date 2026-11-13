@@ -55,11 +55,21 @@ enum menuRadioHwItems {
   CASE_PCBX9E(ITEM_RADIO_HARDWARE_SQ)
   CASE_PCBX9E(ITEM_RADIO_HARDWARE_SR)
   CASE_BLUETOOTH(ITEM_RADIO_HARDWARE_BLUETOOTH_MODE)
+#if defined(USEHORUSBT)
   CASE_BLUETOOTH(ITEM_RADIO_HARDWARE_BLUETOOTH_NAME)
-  ITEM_RADIO_HARDWARE_UART3_MODE,
+#endif
+#if defined(AUX_SERIAL)
+  ITEM_RADIO_HARDWARE_AUX_SERIAL_MODE,
+#endif
   ITEM_RADIO_HARDWARE_JITTER_FILTER,
   ITEM_RADIO_HARDWARE_MAX
 };
+
+#if defined(AUX_SERIAL)
+  #define AUX_SERIAL_ROWS 0,
+#else
+  #define AUX_SERIAL_ROWS
+#endif
 
 #define HW_SETTINGS_COLUMN 15*FW
 
@@ -80,7 +90,7 @@ enum menuRadioHwItems {
 #if defined(BLUETOOTH) && defined(USEHORUSBT)
   #define BLUETOOTH_ROWS 0, uint8_t(g_eeGeneral.bluetoothMode == BLUETOOTH_OFF ? -1 : 0),
 #else
-  #define BLUETOOTH_ROWS
+  #define BLUETOOTH_ROWS (uint8_t)0,
 #endif
 
 #define SWITCH_TYPE_MAX(sw)   ((MIXSRC_SF-MIXSRC_FIRST_SWITCH == sw || MIXSRC_SH-MIXSRC_FIRST_SWITCH == sw) ? SWITCH_2POS : SWITCH_3POS)
@@ -88,7 +98,7 @@ enum menuRadioHwItems {
 
 void menuRadioHardware(event_t event)
 {
-  MENU(STR_HARDWARE, menuTabGeneral, MENU_RADIO_HARDWARE, ITEM_RADIO_HARDWARE_MAX, { LABEL(Sticks), 0, 0, 0, 0, LABEL(Pots), POTS_ROWS, LABEL(Switches), SWITCHES_ROWS, BLUETOOTH_ROWS 0 });
+  MENU(STR_HARDWARE, menuTabGeneral, MENU_RADIO_HARDWARE, ITEM_RADIO_HARDWARE_MAX, { LABEL(Sticks), 0, 0, 0, 0, LABEL(Pots), POTS_ROWS, LABEL(Switches), SWITCHES_ROWS, BLUETOOTH_ROWS AUX_SERIAL_ROWS });
 
   uint8_t sub = menuVerticalPosition;
 
@@ -198,27 +208,34 @@ void menuRadioHardware(event_t event)
         break;
       }
 
-#if defined(BLUETOOTH) && defined(USEHORUSBT)
+#if defined(BLUETOOTH)
         case ITEM_RADIO_HARDWARE_BLUETOOTH_MODE:
-          lcdDrawText(INDENT_WIDTH, y, STR_BLUETOOTH);
+          lcdDrawTextIndented(y, STR_BLUETOOTH);
           lcdDrawTextAtIndex(HW_SETTINGS_COLUMN, y, STR_BLUETOOTH_MODES, g_eeGeneral.bluetoothMode, attr);
           if (attr) {
+#if defined(USEHORUSBT)
             g_eeGeneral.bluetoothMode = checkIncDecGen(event, g_eeGeneral.bluetoothMode, BLUETOOTH_OFF, BLUETOOTH_TRAINER);
+#else
+            g_eeGeneral.bluetoothMode = checkIncDecGen(event, g_eeGeneral.bluetoothMode, BLUETOOTH_OFF, BLUETOOTH_TELEMETRY);
+#endif
           }
           break;
-
+#if defined(USEHORUSBT)
         case ITEM_RADIO_HARDWARE_BLUETOOTH_NAME:
-          lcdDrawText(INDENT_WIDTH, y, STR_NAME);
+          lcdDrawTextIndented(y, STR_NAME);
           editName(HW_SETTINGS_COLUMN, y, g_eeGeneral.bluetoothName, LEN_BLUETOOTH_NAME, event, attr);
           break;
 #endif
+#endif
 
-      case ITEM_RADIO_HARDWARE_UART3_MODE:
-        g_eeGeneral.serial2Mode = editChoice(HW_SETTINGS_COLUMN, y, STR_UART3MODE, STR_UART3MODES, g_eeGeneral.serial2Mode, 0, UART_MODE_MAX, attr, event);
+#if defined(AUX_SERIAL)
+      case ITEM_RADIO_HARDWARE_AUX_SERIAL_MODE:
+        g_eeGeneral.auxSerialMode = editChoice(HW_SETTINGS_COLUMN, y, STR_AUX_SERIAL_MODE, STR_AUX_SERIAL_MODES, g_eeGeneral.auxSerialMode, 0, UART_MODE_MAX, attr, event);
         if (attr && checkIncDec_Ret) {
-          serial2Init(g_eeGeneral.serial2Mode, modelTelemetryProtocol());
+          auxSerialInit(g_eeGeneral.auxSerialMode, modelTelemetryProtocol());
         }
         break;
+#endif
 
       case ITEM_RADIO_HARDWARE_JITTER_FILTER:
       {

@@ -52,11 +52,10 @@ extern const QColor colors[CPN_MAX_CURVES];
 
 #define TRIM_MODE_NONE  0x1F  // 0b11111
 
-QString getTheme();
-
 class CompanionIcon: public QIcon {
   public:
     CompanionIcon(const QString &baseimage);
+    void addImage(const QString &baseimage, Mode mode = Normal, State state = Off);
 };
 
 class GVarGroup: public QObject {
@@ -118,42 +117,20 @@ class CurveGroup : public QObject {
     int lastType;
 };
 
-
-#define POPULATE_NONE           (1<<0)
-#define POPULATE_SOURCES        (1<<1)
-#define POPULATE_TRIMS          (1<<2)
-#define POPULATE_SWITCHES       (1<<3)
-#define POPULATE_GVARS          (1<<4)
-#define POPULATE_TELEMETRY      (1<<5)
-#define POPULATE_TELEMETRYEXT   (1<<6)
-#define POPULATE_VIRTUAL_INPUTS (1<<7)
-#define POPULATE_SCRIPT_OUTPUTS (1<<8)
-
-#define GVARS_VARIANT           0x0001
-#define FRSKY_VARIANT           0x0002
-
 namespace Helpers
 {
-  void addRawSourceItems(QStandardItemModel * itemModel, const RawSourceType & type, int count, const GeneralSettings * const generalSettings = NULL,
-                         const ModelData * const model = NULL, const int start = 0);
-  QStandardItemModel * getRawSourceItemModel(const GeneralSettings * const generalSettings = NULL, const ModelData * const model = NULL, unsigned int flags = 0);
-
   void populateGvarUseCB(QComboBox *b, unsigned int phase);
   void populateGVCB(QComboBox & b, int value, const ModelData & model);
   QString getAdjustmentString(int16_t val, const ModelData * model = NULL, bool sign = false);
 
   void populateFileComboBox(QComboBox * b, const QSet<QString> & set, const QString & current);
   void getFileComboBoxValue(QComboBox * b, char * dest, int length);
+
+  void exportAppSettings(QWidget * dlgParent = nullptr);
+
 }  // namespace Helpers
 
-// TODO : move to Helpers namespace
-
-QString image2qstring(QImage image);
-int findmult(float value, float base);
-
-/* FrSky helpers */
-QString getFrSkyAlarmType(int alarm);
-QString getFrSkyUnits(int units);
+// TODO : move globals to Helpers namespace
 
 void startSimulation(QWidget * parent, RadioData & radioData, int modelIdx);
 
@@ -163,14 +140,6 @@ QPixmap makePixMap(const QImage & image);
 int version2index(const QString & version);
 const QString index2version(int index);
 
-class QTimeS : public QTime
-{
-  public:
-    QTimeS(int s) { int h = s/3600; s %= 3600; int m = s/60; s %=60; setHMS(h, m, s); }
-    QTimeS(const QTime & q) : QTime(q) {}
-    int seconds() const { return hour()*3600 + minute()*60 + second(); }
-};
-
 bool qunlink(const QString & fileName);
 
 QString generateProcessUniqueTempFileName(const QString & fileName);
@@ -179,8 +148,14 @@ bool isTempFileName(const QString & fileName);
 QString getSoundsPath(const GeneralSettings &generalSettings);
 QSet<QString> getFilesSet(const QString &path, const QStringList &filter, int maxLen);
 
-bool caseInsensitiveLessThan(const QString &s1, const QString &s2);
 
+class QTimeS : public QTime
+{
+  public:
+    QTimeS(int s) { int h = s/3600; s %= 3600; int m = s/60; s %=60; setHMS(h, m, s); }
+    QTimeS(const QTime & q) : QTime(q) {}
+    int seconds() const { return hour()*3600 + minute()*60 + second(); }
+};
 
 class GpsCoord
 {

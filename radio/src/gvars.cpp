@@ -20,37 +20,12 @@
 
 #include "opentx.h"
 
-#if defined(PCBSTD)
-int16_t getGVarFieldValue(int16_t x, int16_t min, int16_t max)
-{
-  if (GV_IS_GV_VALUE(x, min, max)) {
-    int8_t idx = GV_INDEX_CALCULATION(x, max);
-    int8_t mul = 1;
-
-    if (idx < 0) {
-      idx = -1-idx;
-      mul = -1;
-    }
-
-    x = GVAR_VALUE(idx, -1) * mul;
-  }
-
-  return limit(min, x, max);
-}
-
-void setGVarValue(uint8_t idx, int8_t value)
-{
-  if (GVAR_VALUE(idx, -1) != value) {
-    SET_GVAR_VALUE(idx, -1, value);
-  }
-}
-#else
 uint8_t gvarDisplayTimer = 0;
 uint8_t gvarLastChanged = 0;
 
 uint8_t getGVarFlightMode(uint8_t fm, uint8_t gv) // TODO change params order to be consistent!
 {
-  for (uint8_t i=0; i<MAX_FLIGHT_MODES; i++) {
+  for (uint32_t i=0; i<MAX_FLIGHT_MODES; i++) {
     if (fm == 0) return 0;
     int16_t val = GVAR_VALUE(gv, fm);
     if (val <= GVAR_MAX) return fm;
@@ -115,4 +90,3 @@ int32_t getGVarFieldValuePrec1(int16_t val, int16_t min, int16_t max, int8_t fm)
   }
   return limit<int>(min*10, val, max*10);
 }
-#endif

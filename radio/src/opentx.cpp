@@ -17,32 +17,23 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#if !defined(SIMU)
+#include "stm32_hal.h"
+#include "stm32_hal_ll.h"
+#endif
 
 #include "opentx.h"
 
-RadioData  g_eeGeneral;
-ModelData  g_model;
+RadioData g_eeGeneral;
+ModelData g_model;
 
-#if defined(SDCARD)
+#if defined(CLIPBOARD)
 Clipboard clipboard;
 #endif
 
-#if !defined(CPUARM)
-uint8_t g_tmr1Latency_max;
-uint8_t g_tmr1Latency_min;
-uint16_t lastMixerDuration;
-#endif
+GlobalData globalData;
 
-uint8_t unexpectedShutdown = 0;
-
-/* AVR: mixer duration in 1/16ms */
-/* ARM: mixer duration in 0.5us */
-uint16_t maxMixerDuration;
-
-#if defined(AUDIO) && !defined(CPUARM)
-audioQueue  audio;
-#endif
-
+uint16_t maxMixerDuration; // step = 0.01ms
 uint8_t heartbeat;
 
 #if defined(OVERRIDE_CHANNEL_FUNCTION)
@@ -53,18 +44,22 @@ safetych_t safetyCh[MAX_OUTPUT_CHANNELS];
 union ReusableBuffer reusableBuffer __DMA;
 
 #if defined(STM32)
-uint8_t* MSC_BOT_Data = reusableBuffer.MSC_BOT_Data;
+uint8_t *MSC_BOT_Data = reusableBuffer.MSC_BOT_Data;
 #endif
 
-const pm_uint8_t bchout_ar[] PROGMEM = {
+const uint8_t bchout_ar[] = {
     0x1B, 0x1E, 0x27, 0x2D, 0x36, 0x39,
     0x4B, 0x4E, 0x63, 0x6C, 0x72, 0x78,
     0x87, 0x8D, 0x93, 0x9C, 0xB1, 0xB4,
-    0xC6, 0xC9, 0xD2, 0xD8, 0xE1, 0xE4 };
+    0xC6, 0xC9, 0xD2, 0xD8, 0xE1, 0xE4};
 
-uint8_t channel_order(uint8_t x)
+uint8_t channelOrder(uint8_t setup, uint8_t x)
 {
-  return ( ((pgm_read_byte(bchout_ar + g_eeGeneral.templateSetup) >> (6-(x-1) * 2)) & 3 ) + 1 );
+  return ((*(bchout_ar + setup) >> (6 - (x - 1) * 2)) & 3) + 1;
+}
+
+uint8_t channelOrder(uint8_t x) {
+  return channelOrder(g_eeGeneral.templateSetup, x);
 }
 
 /*
@@ -73,61 +68,58 @@ mode2 rud thr ele ail
 mode3 ail ele thr rud
 mode4 ail thr ele rud
 */
-const pm_uint8_t modn12x3[] PROGMEM = {
+const uint8_t modn12x3[] = {
     0, 1, 2, 3,
     0, 2, 1, 3,
     3, 1, 2, 0,
-    3, 2, 1, 0 };
+    3, 2, 1, 0};
 
 volatile tmr10ms_t g_tmr10ms;
 
-#if defined(CPUARM)
 volatile uint8_t rtc_count = 0;
 uint32_t watchdogTimeout = 0;
 
-void watchdogSuspend(uint32_t timeout)
+void watchdogSuspend(uint32_t timeout) 
 {
   watchdogTimeout = timeout;
 }
-#endif
 
-void per10ms()
+void per10ms() 
 {
   g_tmr10ms++;
 
-#if defined(CPUARM)
-  if (watchdogTimeout) {
+  if (watchdogTimeout)
+  {
     watchdogTimeout -= 1;
-    wdt_reset();  // Retrigger hardware watchdog
+    WDG_RESET(); // Retrigger hardware watchdog
   }
-#endif
 
 #if defined(GUI)
-  if (lightOffCounter) lightOffCounter--;
-  if (flashCounter) flashCounter--;
-  if (noHighlightCounter) noHighlightCounter--;
+  if (lightOffCounter)
+    lightOffCounter--;
+  if (flashCounter)
+    flashCounter--;
+  if (noHighlightCounter)
+    noHighlightCounter--;
 #endif
 
   if (trimsCheckTimer) trimsCheckTimer--;
-  if (ppmInputValidityTimer) ppmInputValidityTimer--;
+  if (trainerInputValidityTimer) trainerInputValidityTimer--;
 
-#if defined(CPUARM)
   if (trimsDisplayTimer)
     trimsDisplayTimer--;
   else
     trimsDisplayMask = 0;
-#endif
 
 #if defined(RTCLOCK)
   /* Update global Date/Time every 100 per10ms cycles */
   if (++g_ms100 == 100) {
-    g_rtcTime++;   // inc global unix timestamp one second
+    g_rtcTime++;  // inc global unix timestamp one second
 #if defined(COPROCESSOR)
-    if (g_rtcTime < 60 || rtc_count<5) {
+    if (g_rtcTime < 60 || rtc_count < 5) {
       rtcInit();
       rtc_count++;
-    }
-    else {
+    } else {
       coprocReadData(true);
     }
 #endif
@@ -148,20 +140,18 @@ void per10ms()
       rePreviousValue = reNewValue;
 
       bool new_cw = (scrollRE < 0) ? false : true;
-      if ((g_tmr10ms - lastEvent >= 10) || (cw == new_cw)) { // 100ms
+      if ((g_tmr10ms - lastEvent >= 10) || (cw == new_cw)) {  // 100ms
 
         putEvent(new_cw ? EVT_ROTARY_RIGHT : EVT_ROTARY_LEFT);
 
-#if defined(CPUARM)
         // rotary encoder navigation speed (acceleration) detection/calculation
-        static uint32_t delay = 2*ROTENC_DELAY_MIDSPEED;
+        static uint32_t delay = 2 * ROTENC_DELAY_MIDSPEED;
 
         if (new_cw == cw) {
           // Modified moving average filter used for smoother change of speed
           delay = (((g_tmr10ms - lastEvent) << 3) + delay) >> 1;
-        }
-        else {
-          delay = 2*ROTENC_DELAY_MIDSPEED;
+        } else {
+          delay = 2 * ROTENC_DELAY_MIDSPEED;
         }
 
         if (delay < ROTENC_DELAY_HIGHSPEED)
@@ -170,7 +160,6 @@ void per10ms()
           rotencSpeed = ROTENC_MIDSPEED;
         else
           rotencSpeed = ROTENC_LOWSPEED;
-#endif
         cw = new_cw;
         lastEvent = g_tmr10ms;
       }
@@ -178,22 +167,24 @@ void per10ms()
   }
 #endif
 
-#if defined(TELEMETRY_FRSKY) || defined(TELEMETRY_JETI)
-  if (!IS_DSM2_SERIAL_PROTOCOL(s_current_protocol[0])) {
-    telemetryInterrupt10ms();
-  }
-#endif
+  telemetryInterrupt10ms();
 
   // These moved here from evalFlightModeMixes() to improve beep trigger reliability.
 #if defined(PWM_BACKLIGHT)
-  if ((g_tmr10ms&0x03) == 0x00)
-    backlightFade(); // increment or decrement brightness until target brightness is reached
+  if ((g_tmr10ms & 0x03) == 0x00)
+    backlightFade();  // increment or decrement brightness until target brightness is reached
 #endif
 
-#if !defined(AUDIO)
-  if (mixWarning & 1) if(((g_tmr10ms&0xFF)==  0)) AUDIO_MIX_WARNING(1);
-  if (mixWarning & 2) if(((g_tmr10ms&0xFF)== 64) || ((g_tmr10ms&0xFF)== 72)) AUDIO_MIX_WARNING(2);
-  if (mixWarning & 4) if(((g_tmr10ms&0xFF)==128) || ((g_tmr10ms&0xFF)==136) || ((g_tmr10ms&0xFF)==144)) AUDIO_MIX_WARNING(3);
+#if !defined(AUDIO) && !defined(PCBI6X)
+  if (mixWarning & 1)
+    if (((g_tmr10ms & 0xFF) == 0))
+      AUDIO_MIX_WARNING(1);
+  if (mixWarning & 2)
+    if (((g_tmr10ms & 0xFF) == 64) || ((g_tmr10ms & 0xFF) == 72))
+      AUDIO_MIX_WARNING(2);
+  if (mixWarning & 4)
+    if (((g_tmr10ms & 0xFF) == 128) || ((g_tmr10ms & 0xFF) == 136) || ((g_tmr10ms & 0xFF) == 144))
+      AUDIO_MIX_WARNING(3);
 #endif
 
 #if defined(SDCARD)
@@ -203,38 +194,26 @@ void per10ms()
   heartbeat |= HEART_TIMER_10MS;
 }
 
-FlightModeData *flightModeAddress(uint8_t idx)
-{
+FlightModeData *flightModeAddress(uint8_t idx) {
   return &g_model.flightModeData[idx];
 }
 
-ExpoData *expoAddress(uint8_t idx )
-{
+ExpoData *expoAddress(uint8_t idx) {
   return &g_model.expoData[idx];
 }
 
-MixData *mixAddress(uint8_t idx)
-{
+MixData *mixAddress(uint8_t idx) {
   return &g_model.mixData[idx];
 }
 
-LimitData *limitAddress(uint8_t idx)
-{
+LimitData *limitAddress(uint8_t idx) {
   return &g_model.limitData[idx];
 }
 
-#if defined(CPUM64)
-void memclear(void *ptr, uint8_t size)
-{
-  memset(ptr, 0, size);
-}
-#endif
-
-void memswap(void * a, void * b, uint8_t size)
-{
-  uint8_t * x = (uint8_t *)a;
-  uint8_t * y = (uint8_t *)b;
-  uint8_t temp ;
+void memswap(void *a, void *b, uint8_t size) {
+  uint8_t *x = (uint8_t *)a;
+  uint8_t *y = (uint8_t *)b;
+  uint8_t temp;
 
   while (size--) {
     temp = *x;
@@ -243,202 +222,120 @@ void memswap(void * a, void * b, uint8_t size)
   }
 }
 
-void generalDefault()
-{
+void generalDefault() {
   memclear(&g_eeGeneral, sizeof(g_eeGeneral));
-  g_eeGeneral.version  = EEPROM_VER;
-  g_eeGeneral.variant = EEPROM_VARIANT;
+  g_eeGeneral.version = EEPROM_VER;
 
-#if !defined(PCBHORUS)
+#if !defined(PCBI6X) // single variant for PCBI6X
+  g_eeGeneral.variant = EEPROM_VARIANT;
+#endif
+
+#if defined(STICK_DEAD_ZONE)
+  g_eeGeneral.stickDeadZone = DEFAULT_STICK_DEADZONE;
+#endif
+
+#if defined(LCD_CONTRAST_DEFAULT)
   g_eeGeneral.contrast = LCD_CONTRAST_DEFAULT;
 #endif
 
 #if defined(PCBHORUS)
-  #if PCBREV >= 13
-    g_eeGeneral.potsConfig = 0x1B;  // S1 = pot, 6P = multipos, S2 = pot with detent
-  #else
-    g_eeGeneral.potsConfig = 0x19;  // S1 = pot without detent, 6P = multipos, S2 = pot with detent
-  #endif
-  g_eeGeneral.slidersConfig = 0x0f; // 4 sliders
+#if PCBREV >= 13
+  g_eeGeneral.potsConfig = 0x1B;  // S1 = pot, 6P = multipos, S2 = pot with detent
+#else
+  g_eeGeneral.potsConfig = 0x19;  // S1 = pot without detent, 6P = multipos, S2 = pot with detent
+#endif
+  g_eeGeneral.slidersConfig = 0x0f;  // 4 sliders
   g_eeGeneral.blOffBright = 20;
-#elif defined(PCBX7) || defined(PCBXLITE)
-  g_eeGeneral.potsConfig = 0x07;    // S1 = pot without detent, S2 = pot with detent
+#elif defined(PCBXLITE) || defined(PCBI6X)
+  g_eeGeneral.potsConfig = 0x0F;  // S1 and S2 = pot without detent
+#elif defined(PCBX7)
+  g_eeGeneral.potsConfig = 0x07;          // S1 = pot without detent, S2 = pot with detent
 #elif defined(PCBTARANIS)
-  g_eeGeneral.potsConfig = 0x05;    // S1 and S2 = pots with detent
-  g_eeGeneral.slidersConfig = 0x03; // LS and RS = sliders with detent
+  g_eeGeneral.potsConfig = 0x05;          // S1 and S2 = pots with detent
+  g_eeGeneral.slidersConfig = 0x03;       // LS and RS = sliders with detent
 #endif
 
 #if defined(PCBXLITE)
-  g_eeGeneral.switchConfig = (SWITCH_2POS << 6) + (SWITCH_2POS << 4) + (SWITCH_3POS << 2) + (SWITCH_3POS << 0); // 2x3POS, 2x2POS
+  g_eeGeneral.switchConfig = (SWITCH_2POS << 6) + (SWITCH_2POS << 4) + (SWITCH_3POS << 2) + (SWITCH_3POS << 0);  // 2x3POS, 2x2POS
+#elif defined(PCBI6X)
+  // SE and SF disabled by default
+  g_eeGeneral.switchConfig = (SWITCH_NONE << 10) + (SWITCH_NONE << 8) + (SWITCH_2POS << 6) + (SWITCH_3POS << 4) + (SWITCH_2POS << 2) + (SWITCH_2POS << 0);
 #elif defined(PCBX7)
-  g_eeGeneral.switchConfig = 0x000006ff; // 4x3POS, 1x2POS, 1xTOGGLE
+  g_eeGeneral.switchConfig = 0x000006ff;  // 4x3POS, 1x2POS, 1xTOGGLE
 #elif defined(PCBTARANIS) || defined(PCBHORUS)
-  g_eeGeneral.switchConfig = 0x00007bff; // 6x3POS, 1x2POS, 1xTOGGLE
+  g_eeGeneral.switchConfig = 0x00007bff;  // 6x3POS, 1x2POS, 1xTOGGLE
 #endif
 
-// vBatWarn is voltage in 100mV, vBatMin is in 100mV but with -9V offset, vBatMax has a -12V offset
-#if defined(PCBX9E) || defined(PCBX12S)
-  // NI-MH 9.6V
-  g_eeGeneral.vBatWarn = 87;
-  g_eeGeneral.vBatMin = -5;   //8,5V
-  g_eeGeneral.vBatMax = -5;   //11,5V
-#elif defined(PCBX10)
-  // Lipo 2V
-  g_eeGeneral.vBatWarn = 66;
-  g_eeGeneral.vBatMin = -28; // 6.2V
-  g_eeGeneral.vBatMax = -38;   // 8.2V
-#elif defined(PCBTARANIS)
-  // NI-MH 7.2V, X9D, X9D+ and X7
-  g_eeGeneral.vBatWarn = 65;
-  g_eeGeneral.vBatMin = -30; //6V
-  g_eeGeneral.vBatMax = -40; //8V
-#else
-  g_eeGeneral.vBatWarn = 90;
-#endif
+  // vBatWarn is voltage in 100mV, vBatMin is in 100mV but with -9V offset, vBatMax has a -12V offset
+  g_eeGeneral.vBatWarn = BATTERY_WARN;
+  if (BATTERY_MIN != 90)
+    g_eeGeneral.vBatMin = BATTERY_MIN - 90;
+  if (BATTERY_MAX != 120)
+    g_eeGeneral.vBatMax = BATTERY_MAX - 120;
 
 #if defined(DEFAULT_MODE)
-  g_eeGeneral.stickMode = DEFAULT_MODE-1;
+  g_eeGeneral.stickMode = DEFAULT_MODE - 1;
 #endif
 
-#if defined(PCBTARANIS)
-  g_eeGeneral.templateSetup = 17; /* TAER */
-#endif
+  g_eeGeneral.templateSetup = DEFAULT_TEMPLATE_SETUP;
 
-#if !defined(CPUM64)
   g_eeGeneral.backlightMode = e_backlight_mode_all;
   g_eeGeneral.lightAutoOff = 2;
   g_eeGeneral.inactivityTimer = 10;
-#endif
 
-#if defined(CPUARM)
+#if defined(VOICE)
   g_eeGeneral.ttsLanguage[0] = 'e';
   g_eeGeneral.ttsLanguage[1] = 'n';
   g_eeGeneral.wavVolume = 2;
   g_eeGeneral.backgroundVolume = 1;
 #endif
 
-#if defined(CPUARM)
-  for (int i=0; i<NUM_STICKS; ++i) {
+  for (int i = 0; i < NUM_STICKS; ++i) {
     g_eeGeneral.trainer.mix[i].mode = 2;
-    g_eeGeneral.trainer.mix[i].srcChn = channel_order(i+1) - 1;
+    g_eeGeneral.trainer.mix[i].srcChn = channelOrder(i + 1) - 1;
     g_eeGeneral.trainer.mix[i].studWeight = 100;
   }
-#endif
-
-#if defined(PCBX9E)
-  const int8_t defaultName[] = { 20, -1, -18, -1, -14, -9, -19 };
-  memcpy(g_eeGeneral.bluetoothName, defaultName, sizeof(defaultName));
-#endif
 
 #if !defined(EEPROM)
   strcpy(g_eeGeneral.currModelFilename, DEFAULT_MODEL_FILENAME);
 #endif
 
-#if defined(PCBHORUS)
-  strcpy(g_eeGeneral.themeName, theme->getName());
-  theme->init();
-#endif
-
   g_eeGeneral.chkSum = 0xFFFF;
 }
 
-uint16_t evalChkSum()
-{
+uint16_t evalChkSum() {
   uint16_t sum = 0;
-  const int16_t *calibValues = (const int16_t *) &g_eeGeneral.calib[0];
-  for (int i=0; i<12; i++)
-    sum += calibValues[i];
+  // calculate first 4 channels
+  for (int8_t i = 0; i < 4; i++) {
+    struct CalibData cal = g_eeGeneral.calib[i];
+    sum += cal.mid + cal.spanNeg + cal.spanPos;
+  }
   return sum;
 }
 
-#if defined(VIRTUAL_INPUTS)
-void clearInputs()
-{
-  memset(g_model.expoData, 0, sizeof(g_model.expoData)); // clear all expos
-}
-
-void defaultInputs()
-{
-  clearInputs();
-
-  for (int i=0; i<NUM_STICKS; i++) {
-    uint8_t stick_index = channel_order(i+1);
-    ExpoData *expo = expoAddress(i);
-    expo->srcRaw = MIXSRC_Rud - 1 + stick_index;
-    expo->curve.type = CURVE_REF_EXPO;
-    expo->chn = i;
-    expo->weight = 100;
-    expo->mode = 3; // TODO constant
-#if defined(TRANSLATIONS_CZ)
-    for (int c=0; c<4; c++) {
-      g_model.inputNames[i][c] = char2idx(STR_INPUTNAMES[1+4*(stick_index-1)+c]);
-    }
-#else
-    for (int c=0; c<3; c++) {
-      g_model.inputNames[i][c] = char2idx(STR_VSRCRAW[2+4*stick_index+c]);
-    }
-#if LEN_INPUT_NAME > 3
-    g_model.inputNames[i][3] = '\0';
-#endif
-#endif
-  }
-  storageDirty(EE_MODEL);
-}
-#endif
-
-#if defined(TEMPLATES)
-inline void applyDefaultTemplate()
-{
-  applyTemplate(TMPL_SIMPLE_4CH); // calls storageDirty internally
-}
-#else
-void applyDefaultTemplate()
-{
-#if defined(VIRTUAL_INPUTS)
-  defaultInputs(); // calls storageDirty internally
-#else
-  storageDirty(EE_MODEL);
-#endif
-
-  for (int i=0; i<NUM_STICKS; i++) {
-    MixData * mix = mixAddress(i);
-    mix->destCh = i;
-    mix->weight = 100;
-#if defined(VIRTUAL_INPUTS)
-    mix->srcRaw = i+1;
-#else
-    mix->srcRaw = MIXSRC_Rud - 1 + channel_order(i+1);
-#endif
-  }
-}
-#endif
-
-#if defined(CPUARM) && defined(EEPROM)
-void checkModelIdUnique(uint8_t index, uint8_t module)
-{
+#if defined(EEPROM)
+void checkModelIdUnique(uint8_t index, uint8_t module) {
   uint8_t modelId = g_model.header.modelId[module];
   uint8_t additionalOnes = 0;
-  char * name = reusableBuffer.msgbuf.msg;
+  char *name = reusableBuffer.modelsetup.msg;
 
-  memset(reusableBuffer.msgbuf.msg, 0, sizeof(reusableBuffer.msgbuf.msg));
+  memset(reusableBuffer.modelsetup.msg, 0, sizeof(reusableBuffer.modelsetup.msg));
 
   if (modelId != 0) {
-    for (uint8_t i = 0; i < MAX_MODELS; i++) {
+    for (uint32_t i = 0; i < MAX_MODELS; i++) {
       if (i != index) {
         if (modelId == modelHeaders[i].modelId[module]) {
-          if ((WARNING_LINE_LEN - 4 - (name - reusableBuffer.msgbuf.msg)) > (signed)(modelHeaders[i].name[0] ? zlen(modelHeaders[i].name, LEN_MODEL_NAME) : sizeof(TR_MODEL) + 2)) { // you cannot rely exactly on WARNING_LINE_LEN so using WARNING_LINE_LEN-2 (-2 for the ",")
-            if (reusableBuffer.msgbuf.msg[0] != 0) {
+          if ((WARNING_LINE_LEN - 4 - (name - reusableBuffer.modelsetup.msg)) > (signed)(modelHeaders[i].name[0] ? zlen(modelHeaders[i].name, LEN_MODEL_NAME) : sizeof(TR_MODEL) + 2)) {  // you cannot rely exactly on WARNING_LINE_LEN so using WARNING_LINE_LEN-2 (-2 for the ",")
+            if (reusableBuffer.modelsetup.msg[0] != 0) {
               name = strAppend(name, ", ");
             }
             if (modelHeaders[i].name[0] == 0) {
               name = strAppend(name, STR_MODEL);
-              name = strAppendUnsigned(name+strlen(name),i, 2);
-            }
-            else {
+              name = strAppendUnsigned(name + strlen(name), i, 2);
+            } else {
               name += zchar2str(name, modelHeaders[i].name, LEN_MODEL_NAME);
             }
-          }
-          else {
+          } else {
             additionalOnes++;
           }
         }
@@ -452,86 +349,45 @@ void checkModelIdUnique(uint8_t index, uint8_t module)
     name = strAppend(name, ")");
   }
 
-  if (reusableBuffer.msgbuf.msg[0] != 0) {
+  if (reusableBuffer.modelsetup.msg[0] != 0) {
     POPUP_WARNING(STR_MODELIDUSED);
-    SET_WARNING_INFO(reusableBuffer.msgbuf.msg, sizeof(reusableBuffer.msgbuf.msg), 0);
+    SET_WARNING_INFO(reusableBuffer.modelsetup.msg, sizeof(reusableBuffer.modelsetup.msg), 0);
   }
+}
+
+uint8_t findNextUnusedModelId(uint8_t index, uint8_t module)
+{
+  uint8_t usedModelIds[(MAX_RXNUM + 7) / 8];
+  memset(usedModelIds, 0, sizeof(usedModelIds));
+
+  for (uint8_t modelIndex = 0; modelIndex < MAX_MODELS; modelIndex++) {
+    if (modelIndex == index)
+      continue;
+
+    uint8_t id = modelHeaders[modelIndex].modelId[module];
+    if (id == 0)
+      continue;
+
+    uint8_t mask = 1u << (id & 7u);
+    usedModelIds[id >> 3u] |= mask;
+  }
+
+  for (uint8_t id = 1; id <= MAX_RX_NUM(module); id++) {
+    uint8_t mask = 1u << (id & 7u);
+    if (!(usedModelIds[id >> 3u] & mask)) {
+      // found free ID
+      return id;
+    }
+  }
+
+  // failed finding something...
+  return 0;
 }
 #endif
 
-void modelDefault(uint8_t id)
-{
-  memset(&g_model, 0, sizeof(g_model));
-
-  applyDefaultTemplate();
-
-#if defined(LUA) && defined(PCBTARANIS) //Horus uses menuModelWizard() for wizard
-  if (isFileAvailable(WIZARD_PATH "/" WIZARD_NAME)) {
-    f_chdir(WIZARD_PATH);
-    luaExec(WIZARD_NAME);
-  }
-#endif
-
-#if defined(PCBTARANIS) || defined(PCBHORUS)
-  g_model.moduleData[INTERNAL_MODULE].type = MODULE_TYPE_XJT;
-  g_model.moduleData[INTERNAL_MODULE].channelsCount = DEFAULT_CHANNELS(INTERNAL_MODULE);
-#elif defined(PCBSKY9X)
-  g_model.moduleData[EXTERNAL_MODULE].type = MODULE_TYPE_PPM;
-#endif
-
-#if defined(CPUARM) && defined(EEPROM)
-  for (int i=0; i<NUM_MODULES; i++) {
-    modelHeaders[id].modelId[i] = g_model.header.modelId[i] = id+1;
-  }
-  checkModelIdUnique(id, 0);
-#endif
-
-#if defined(CPUARM) && defined(FLIGHT_MODES) && defined(GVARS)
-  for (int p=1; p<MAX_FLIGHT_MODES; p++) {
-    for (int i=0; i<MAX_GVARS; i++) {
-      g_model.flightModeData[p].gvars[i] = GVAR_MAX+1;
-    }
-  }
-#endif
-
-#if defined(FLIGHT_MODES) && defined(ROTARY_ENCODERS)
-  for (int p=1; p<MAX_FLIGHT_MODES; p++) {
-    for (int i=0; i<ROTARY_ENCODERS; i++) {
-      g_model.flightModeData[p].rotaryEncoders[i] = ROTARY_ENCODER_MAX+1;
-    }
-  }
-#endif
-
-#if defined(TELEMETRY_MAVLINK)
-  g_model.mavlink.rc_rssi_scale = 15;
-  g_model.mavlink.pc_rssi_en = 1;
-#endif
-
-#if !defined(EEPROM)
-  strcpy(g_model.header.name, "\015\361\374\373\364");
-  g_model.header.name[5] = '\033' + id/10;
-  g_model.header.name[6] = '\033' + id%10;
-#endif
-
-#if defined(PCBHORUS)
-  extern const LayoutFactory * defaultLayout;
-  delete customScreens[0];
-  customScreens[0] = defaultLayout->create(&g_model.screenData[0].layoutData);
-  strcpy(g_model.screenData[0].layoutName, "Layout2P1");
-  extern const WidgetFactory * defaultWidget;
-  customScreens[0]->createWidget(0, defaultWidget);
-  // enable switch warnings
-  for (int i=0; i<NUM_SWITCHES; i++) {
-    g_model.switchWarningState |= (1 << (3*i));
-  }
-#endif
-}
-
-#if defined(VIRTUAL_INPUTS)
-bool isInputRecursive(int index)
-{
-  ExpoData * line = expoAddress(0);
-  for (int i=0; i<MAX_EXPOS; i++, line++) {
+bool isInputRecursive(int index) {
+  ExpoData *line = expoAddress(0);
+  for (int i = 0; i < MAX_EXPOS; i++, line++) {
     if (line->chn > index)
       break;
     else if (line->chn < index)
@@ -541,33 +397,29 @@ bool isInputRecursive(int index)
   }
   return false;
 }
-#endif
 
 #if defined(AUTOSOURCE)
-int8_t getMovedSource(GET_MOVED_SOURCE_PARAMS)
-{
+int8_t getMovedSource(GET_MOVED_SOURCE_PARAMS) {
   int8_t result = 0;
   static tmr10ms_t s_move_last_time = 0;
 
-#if defined(VIRTUAL_INPUTS)
   static int16_t inputsStates[MAX_INPUTS];
   if (min <= MIXSRC_FIRST_INPUT) {
-    for (uint8_t i=0; i<MAX_INPUTS; i++) {
+    for (uint32_t i = 0; i < MAX_INPUTS; i++) {
       if (abs(anas[i] - inputsStates[i]) > 512) {
         if (!isInputRecursive(i)) {
-          result = MIXSRC_FIRST_INPUT+i;
+          result = MIXSRC_FIRST_INPUT + i;
           break;
         }
       }
     }
   }
-#endif
 
-  static int16_t sourcesStates[NUM_STICKS+NUM_POTS+NUM_SLIDERS+NUM_MOUSE_ANALOGS];
+  static int16_t sourcesStates[NUM_STICKS + NUM_POTS + NUM_SLIDERS + NUM_MOUSE_ANALOGS];
   if (result == 0) {
-    for (uint8_t i=0; i<NUM_STICKS+NUM_POTS+NUM_SLIDERS; i++) {
+    for (uint32_t i = 0; i < NUM_STICKS + NUM_POTS + NUM_SLIDERS; i++) {
       if (abs(calibratedAnalogs[i] - sourcesStates[i]) > 512) {
-        result = MIXSRC_Rud+i;
+        result = MIXSRC_Rud + i;
         break;
       }
     }
@@ -579,9 +431,7 @@ int8_t getMovedSource(GET_MOVED_SOURCE_PARAMS)
   }
 
   if (result || recent) {
-#if defined(VIRTUAL_INPUTS)
     memcpy(inputsStates, anas, sizeof(inputsStates));
-#endif
     memcpy(sourcesStates, calibratedAnalogs, sizeof(sourcesStates));
   }
 
@@ -591,9 +441,8 @@ int8_t getMovedSource(GET_MOVED_SOURCE_PARAMS)
 #endif
 
 #if defined(FLIGHT_MODES)
-uint8_t getFlightMode()
-{
-  for (uint8_t i=1; i<MAX_FLIGHT_MODES; i++) {
+uint8_t getFlightMode() {
+  for (uint32_t i = 1; i < MAX_FLIGHT_MODES; i++) {
     FlightModeData *phase = &g_model.flightModeData[i];
     if (phase->swtch && getSwitch(phase->swtch)) {
       return i;
@@ -603,31 +452,22 @@ uint8_t getFlightMode()
 }
 #endif
 
-trim_t getRawTrimValue(uint8_t phase, uint8_t idx)
-{
-  FlightModeData * p = flightModeAddress(phase);
-#if defined(PCBSTD)
-  return (((trim_t)p->trim[idx]) << 2) + ((p->trim_ext >> (2*idx)) & 0x03);
-#else
+trim_t getRawTrimValue(uint8_t phase, uint8_t idx) {
+  FlightModeData *p = flightModeAddress(phase);
   return p->trim[idx];
-#endif
 }
 
-int getTrimValue(uint8_t phase, uint8_t idx)
-{
-#if defined(CPUARM)
+int getTrimValue(uint8_t phase, uint8_t idx) {
   int result = 0;
-  for (uint8_t i=0; i<MAX_FLIGHT_MODES; i++) {
+  for (uint32_t i = 0; i < MAX_FLIGHT_MODES; i++) {
     trim_t v = getRawTrimValue(phase, idx);
     if (v.mode == TRIM_MODE_NONE) {
       return result;
-    }
-    else {
+    } else {
       unsigned int p = v.mode >> 1;
       if (p == phase || phase == 0) {
         return result + v.value;
-      }
-      else {
+      } else {
         phase = p;
         if (v.mode % 2 != 0) {
           result += v.value;
@@ -636,27 +476,20 @@ int getTrimValue(uint8_t phase, uint8_t idx)
     }
   }
   return 0;
-#else
-  return getRawTrimValue(getTrimFlightMode(phase, idx), idx);
-#endif
 }
 
-#if defined(CPUARM)
-bool setTrimValue(uint8_t phase, uint8_t idx, int trim)
-{
-  for (uint8_t i=0; i<MAX_FLIGHT_MODES; i++) {
-    trim_t & v = flightModeAddress(phase)->trim[idx];
+bool setTrimValue(uint8_t phase, uint8_t idx, int trim) {
+  for (uint32_t i = 0; i < MAX_FLIGHT_MODES; i++) {
+    trim_t &v = flightModeAddress(phase)->trim[idx];
     if (v.mode == TRIM_MODE_NONE)
       return false;
     unsigned int p = v.mode >> 1;
     if (p == phase || phase == 0) {
       v.value = trim;
       break;
-    }
-    else if (v.mode % 2 == 0) {
+    } else if (v.mode % 2 == 0) {
       phase = p;
-    }
-    else {
+    } else {
       v.value = limit<int>(TRIM_EXTENDED_MIN, trim - getTrimValue(p, idx), TRIM_EXTENDED_MAX);
       break;
     }
@@ -664,226 +497,69 @@ bool setTrimValue(uint8_t phase, uint8_t idx, int trim)
   storageDirty(EE_MODEL);
   return true;
 }
-#else
-void setTrimValue(uint8_t phase, uint8_t idx, int trim)
-{
-#if defined(PCBSTD)
-  FlightModeData *p = flightModeAddress(phase);
-  p->trim[idx] = (int8_t)(trim >> 2);
-  idx <<= 1;
-  p->trim_ext = (p->trim_ext & ~(0x03 << idx)) + (((trim & 0x03) << idx));
-#else
-  FlightModeData *p = flightModeAddress(phase);
-  p->trim[idx] = trim;
-#endif
-  storageDirty(EE_MODEL);
-}
-#endif
-
-#if !defined(CPUARM)
-uint8_t getTrimFlightMode(uint8_t phase, uint8_t idx)
-{
-  for (uint8_t i=0; i<MAX_FLIGHT_MODES; i++) {
-    if (phase == 0) return 0;
-    trim_t trim = getRawTrimValue(phase, idx);
-    if (trim <= TRIM_EXTENDED_MAX) return phase;
-    uint8_t result = trim-TRIM_EXTENDED_MAX-1;
-    if (result >= phase) result++;
-    phase = result;
-  }
-  return 0;
-}
-#endif
 
 #if defined(ROTARY_ENCODERS)
-uint8_t getRotaryEncoderFlightMode(uint8_t idx)
-{
+uint8_t getRotaryEncoderFlightMode(uint8_t idx) {
   uint8_t phase = mixerCurrentFlightMode;
-  for (uint8_t i=0; i<MAX_FLIGHT_MODES; i++) {
-    if (phase == 0) return 0;
+  for (uint32_t i = 0; i < MAX_FLIGHT_MODES; i++) {
+    if (phase == 0)
+      return 0;
     int16_t value = flightModeAddress(phase)->rotaryEncoders[idx];
-    if (value <= ROTARY_ENCODER_MAX) return phase;
-    uint8_t result = value-ROTARY_ENCODER_MAX-1;
-    if (result >= phase) result++;
+    if (value <= ROTARY_ENCODER_MAX)
+      return phase;
+    uint8_t result = value - ROTARY_ENCODER_MAX - 1;
+    if (result >= phase)
+      result++;
     phase = result;
   }
   return 0;
 }
 
-int16_t getRotaryEncoder(uint8_t idx)
-{
+int16_t getRotaryEncoder(uint8_t idx) {
   return flightModeAddress(getRotaryEncoderFlightMode(idx))->rotaryEncoders[idx];
 }
 
-void incRotaryEncoder(uint8_t idx, int8_t inc)
-{
+void incRotaryEncoder(uint8_t idx, int8_t inc) {
   rotencValue[idx] += inc;
   int16_t *value = &(flightModeAddress(getRotaryEncoderFlightMode(idx))->rotaryEncoders[idx]);
-  *value = limit((int16_t)-RESX, (int16_t)(*value + (inc * 8)), (int16_t)+RESX);
+  *value = limit((int16_t)-RESX, (int16_t)(*value + (inc * 8)), (int16_t) + RESX);
   storageDirty(EE_MODEL);
 }
 #endif
 
-#if defined(CPUARM)
-getvalue_t convert16bitsTelemValue(source_t channel, ls_telemetry_value_t value)
-{
-  return value;
-}
-
-getvalue_t convert8bitsTelemValue(source_t channel, ls_telemetry_value_t value)
-{
+getvalue_t convert16bitsTelemValue(source_t channel, ls_telemetry_value_t value) {
   return value;
 }
 
 #if defined(TELEMETRY_FRSKY)
-ls_telemetry_value_t minTelemValue(source_t channel)
-{
+ls_telemetry_value_t minTelemValue(source_t channel) {
   return 0;
 }
 
-ls_telemetry_value_t maxTelemValue(source_t channel)
-{
+ls_telemetry_value_t maxTelemValue(source_t channel) {
   return 30000;
 }
 #endif
 
-ls_telemetry_value_t max8bitsTelemValue(source_t channel)
-{
-  return 30000;
-}
-
-#elif defined(TELEMETRY_FRSKY)
-
-/*
-ls_telemetry_value_t minTelemValue(uint8_t channel)
-{
-  switch (channel) {
-    case TELEM_TIMER1:
-    case TELEM_TIMER2:
-      return -3600;
-    case TELEM_ALT:
-    case TELEM_MIN_ALT:
-    case TELEM_MAX_ALT:
-    case TELEM_GPSALT:
-      return -500;
-    case TELEM_T1:
-    case TELEM_MAX_T1:
-    case TELEM_T2:
-    case TELEM_MAX_T2:
-      return -30;
-    case TELEM_ACCx:
-    case TELEM_ACCy:
-    case TELEM_ACCz:
-      return -1000;
-    case TELEM_VSPEED:
-      return -3000;
-    default:
-      return 0;
-  }
-}
-*/
-ls_telemetry_value_t maxTelemValue(uint8_t channel)
-{
-  switch (channel) {
-    case TELEM_FUEL:
-    case TELEM_RSSI_TX:
-    case TELEM_RSSI_RX:
-      return 100;
-    case TELEM_HDG:
-      return 180;
-    default:
-      return 255;
-  }
-}
-#endif
-
-#if !defined(CPUARM)
-getvalue_t convert8bitsTelemValue(uint8_t channel, ls_telemetry_value_t value)
-{
-  getvalue_t result;
-  switch (channel) {
-    case TELEM_TIMER1:
-    case TELEM_TIMER2:
-      result = value * 5;
-      break;
-#if defined(TELEMETRY_FRSKY)
-    case TELEM_ALT:
-    case TELEM_GPSALT:
-    case TELEM_MAX_ALT:
-    case TELEM_MIN_ALT:
-      result = value * 8 - 500;
-      break;
-    case TELEM_RPM:
-    case TELEM_MAX_RPM:
-      result = value * 50;
-      break;
-    case TELEM_T1:
-    case TELEM_T2:
-    case TELEM_MAX_T1:
-    case TELEM_MAX_T2:
-      result = (getvalue_t)value - 30;
-      break;
-    case TELEM_CELL:
-    case TELEM_HDG:
-    case TELEM_SPEED:
-    case TELEM_MAX_SPEED:
-      result = value * 2;
-      break;
-    case TELEM_ASPEED:
-    case TELEM_MAX_ASPEED:
-      result = value * 20;
-      break;
-    case TELEM_DIST:
-    case TELEM_MAX_DIST:
-      result = value * 8;
-      break;
-    case TELEM_CURRENT:
-    case TELEM_POWER:
-    case TELEM_MAX_CURRENT:
-    case TELEM_MAX_POWER:
-      result = value * 5;
-      break;
-    case TELEM_CONSUMPTION:
-      result = value * 100;
-      break;
-    case TELEM_VSPEED:
-      result = ((getvalue_t)value - 125) * 10;
-      break;
-#endif
-    default:
-      result = value;
-      break;
-  }
-  return result;
-}
-#endif
-
-#define INAC_STICKS_SHIFT   6
+#define INAC_STICKS_SHIFT 6
 #define INAC_SWITCHES_SHIFT 8
-bool inputsMoved()
-{
+bool inputsMoved() {
   uint8_t sum = 0;
-  for (uint8_t i=0; i<NUM_STICKS+NUM_POTS+NUM_SLIDERS; i++)
+  for (uint32_t i = 0; i < NUM_STICKS + NUM_POTS + NUM_SLIDERS; i++)
     sum += anaIn(i) >> INAC_STICKS_SHIFT;
-  for (uint8_t i=0; i<NUM_SWITCHES; i++)
-    sum += getValue(MIXSRC_FIRST_SWITCH+i) >> INAC_SWITCHES_SHIFT;
+  for (uint32_t i = 0; i < NUM_SWITCHES; i++)
+    sum += getValue(MIXSRC_FIRST_SWITCH + i) >> INAC_SWITCHES_SHIFT;
 
-  if (abs((int8_t)(sum-inactivity.sum)) > 1) {
+  if (abs((int8_t)(sum - inactivity.sum)) > 1) {
     inactivity.sum = sum;
     return true;
-  }
-  else {
+  } else {
     return false;
   }
 }
 
-void checkBacklight()
-{
-  static uint8_t tmr10ms ;
-
-#if defined(PCBSTD) && defined(ROTARY_ENCODER_NAVIGATION)
-  rotencPoll();
-#endif
+void checkBacklight() {
+  static uint8_t tmr10ms;
 
   uint8_t x = g_blinkTmr10ms;
   if (tmr10ms != x) {
@@ -891,104 +567,81 @@ void checkBacklight()
     if (inputsMoved()) {
       inactivity.counter = 0;
       if (g_eeGeneral.backlightMode & e_backlight_mode_sticks) {
-        backlightOn();
+        resetBacklightTimeout();
       }
     }
 
-    bool backlightOn = (g_eeGeneral.backlightMode == e_backlight_mode_on || lightOffCounter || isFunctionActive(FUNCTION_BACKLIGHT));
-    if (flashCounter) backlightOn = !backlightOn;
-    if (backlightOn)
+    if (requiredBacklightBright == BACKLIGHT_FORCED_ON) {
+      currentBacklightBright = g_eeGeneral.backlightBright;
       BACKLIGHT_ENABLE();
-    else
-      BACKLIGHT_DISABLE();
+    }
+    else {
+      bool backlightOn = ((g_eeGeneral.backlightMode == e_backlight_mode_on) ||
+                          (g_eeGeneral.backlightMode != e_backlight_mode_off && lightOffCounter) ||
+                          (g_eeGeneral.backlightMode == e_backlight_mode_off && isFunctionActive(FUNCTION_BACKLIGHT)));
 
-#if defined(PCBSTD) && defined(VOICE) && !defined(SIMU)
-    Voice.voice_process() ;
-#endif
+      if (flashCounter) {
+        backlightOn = !backlightOn;
+      }
+
+      if (backlightOn) {
+        currentBacklightBright = requiredBacklightBright;
+        BACKLIGHT_ENABLE();
+      }
+      else {
+        BACKLIGHT_DISABLE();
+      }
+    }
   }
 }
 
-void doLoopCommonActions()
-{
-  checkBacklight();
-}
-
-void backlightOn()
-{
-  lightOffCounter = ((uint16_t)g_eeGeneral.lightAutoOff*250) << 1;
+void resetBacklightTimeout() {
+  lightOffCounter = ((uint16_t)g_eeGeneral.lightAutoOff * 250) << 1;
 }
 
 #if MENUS_LOCK == 1
 bool readonly = true;
-bool readonlyUnlocked()
-{
+bool readonlyUnlocked() {
   if (readonly) {
     POPUP_WARNING(STR_MODS_FORBIDDEN);
     return false;
-  }
-  else {
+  } else {
     return true;
   }
 }
 #endif
 
 #if defined(SPLASH)
-void doSplash()
-{
-#if defined(PWR_BUTTON_PRESS)
+void doSplash() {
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
   bool refresh = false;
 #endif
 
   if (SPLASH_NEEDED()) {
+    resetBacklightTimeout();
     drawSplash();
 
-#if !defined(CPUARM)
-    AUDIO_HELLO();
-#endif
-
-#if defined(PCBSTD)
-    lcdSetContrast();
-#elif defined(PCBSKY9X)
-    tmr10ms_t curTime = get_tmr10ms() + 10;
-    uint8_t contrast = 10;
-    lcdSetRefVolt(contrast);
-#endif
-
-    getADC(); // init ADC array
+    getADC();  // init ADC array
 
     inputsMoved();
 
     tmr10ms_t tgtime = get_tmr10ms() + SPLASH_TIMEOUT;
 
     while (tgtime > get_tmr10ms()) {
-#if defined(SIMU)
-      SIMU_SLEEP(1);
-#elif defined(CPUARM)
-      CoTickDelay(1);
-#endif
+      sleep_ms(1);
 
       getADC();
 
-#if defined(FSPLASH)
-      // Splash is forced, we can't skip it
-      if (!(g_eeGeneral.splashMode & 0x04)) {
-#endif
+      if (keyDown() || inputsMoved())
+        return;
 
-      if (keyDown() || inputsMoved()) return;
-
-#if defined(FSPLASH)
-      }
-#endif
-
-#if defined(PWR_BUTTON_PRESS)
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
       uint32_t pwr_check = pwrCheck();
       if (pwr_check == e_power_off) {
         break;
-      }
-      else if (pwr_check == e_power_press) {
+      } else if (pwr_check == e_power_press) {
         refresh = true;
-      }
-      else if (pwr_check == e_power_on && refresh) {
+      } else if (pwr_check == e_power_on && refresh) {
         drawSplash();
         refresh = false;
       }
@@ -1000,23 +653,13 @@ void doSplash()
 
 #if defined(SPLASH_FRSKY)
       static uint8_t secondSplash = false;
-      if (!secondSplash && get_tmr10ms() >= tgtime-200) {
+      if (!secondSplash && get_tmr10ms() >= tgtime - 200) {
         secondSplash = true;
         drawSecondSplash();
       }
 #endif
 
-#if defined(PCBSKY9X)
-      if (curTime < get_tmr10ms()) {
-        curTime += 10;
-        if (contrast < g_eeGeneral.contrast) {
-          contrast += 1;
-          lcdSetRefVolt(contrast);
-        }
-      }
-#endif
-
-      doLoopCommonActions();
+      checkBacklight();
     }
   }
 }
@@ -1025,14 +668,13 @@ void doSplash()
 #define doSplash()
 #endif
 
-#if defined(SDCARD) && defined(CPUARM)
-void checkSDVersion()
-{
+#if defined(SDCARD)
+void checkSDVersion() {
   if (sdMounted()) {
     FIL versionFile;
     UINT read = 0;
-    char version[sizeof(REQUIRED_SDCARD_VERSION)-1];
-    char error[sizeof(TR_WRONG_SDCARDVERSION)+ sizeof(version)];
+    char version[sizeof(REQUIRED_SDCARD_VERSION) - 1];
+    char error[sizeof(TR_WRONG_SDCARDVERSION) + sizeof(version)];
 
     strAppend(strAppend(error, STR_WRONG_SDCARDVERSION, sizeof(TR_WRONG_SDCARDVERSION)), REQUIRED_SDCARD_VERSION, sizeof(REQUIRED_SDCARD_VERSION));
     FRESULT result = f_open(&versionFile, "/opentx.sdcard.version", FA_OPEN_EXISTING | FA_READ);
@@ -1040,12 +682,11 @@ void checkSDVersion()
       if (f_read(&versionFile, &version, sizeof(version), &read) != FR_OK ||
           read != sizeof(version) ||
           strncmp(version, REQUIRED_SDCARD_VERSION, sizeof(version)) != 0) {
-        TRACE("SD card version mismatch:  %.*s, %s", sizeof(REQUIRED_SDCARD_VERSION)-1, version, REQUIRED_SDCARD_VERSION);
+        TRACE("SD card version mismatch:  %.*s, %s", sizeof(REQUIRED_SDCARD_VERSION) - 1, version, REQUIRED_SDCARD_VERSION);
         ALERT(STR_SD_CARD, error, AU_ERROR);
       }
       f_close(&versionFile);
-    }
-    else {
+    } else {
       ALERT(STR_SD_CARD, error, AU_ERROR);
     }
   }
@@ -1053,11 +694,10 @@ void checkSDVersion()
 #endif
 
 #if defined(PCBTARANIS) || defined(PCBHORUS)
-void checkFailsafe()
-{
-  for (int i=0; i<NUM_MODULES; i++) {
-    if (IS_MODULE_PXX(i)) {
-      ModuleData & moduleData = g_model.moduleData[i];
+void checkFailsafe() {
+  for (int i = 0; i < NUM_MODULES; i++) {
+    if (isModulePXX(i)) {
+      ModuleData &moduleData = g_model.moduleData[i];
       if (HAS_RF_PROTOCOL_FAILSAFE(moduleData.rfProtocol) && moduleData.failsafeMode == FAILSAFE_NOT_SET) {
         ALERT(STR_FAILSAFEWARN, STR_NO_FAILSAFE, AU_ERROR);
         break;
@@ -1065,158 +705,122 @@ void checkFailsafe()
     }
   }
 }
+//#elif defined(PCBI6X)
+//void checkFailsafe() {
+  /*
+  AFHDS2A is always Hold when not set therefore this warning is not needed
+  */
+  // for (int i = 0; i < NUM_MODULES; i++) {
+  //   if (isModuleA7105(i)) {
+  //     ModuleData &moduleData = g_model.moduleData[i];
+  //     if (HAS_RF_PROTOCOL_FAILSAFE(moduleData.rfProtocol) && moduleData.failsafeMode == FAILSAFE_NOT_SET) {
+  //       ALERT(STR_FAILSAFEWARN, STR_NO_FAILSAFE, AU_ERROR);
+  //       break;
+  //     }
+  //   }
+  // }
+//}
 #else
 #define checkFailsafe()
 #endif
-#if defined(CPUARM)
-void checkRSSIAlarmsDisabled()
-{
-  if (g_model.rssiAlarms.disabled) {
-    ALERT(STR_RSSIALARM_WARN, STR_NO_RSSIALARM, AU_ERROR);
-  }
-}
-#endif
 
 #if defined(GUI)
-void checkAll()
-{
+void checkAll() {
 #if defined(EEPROM_RLC)
   checkLowEEPROM();
 #endif
 
-#if defined(MODULE_ALWAYS_SEND_PULSES)
-  startupWarningState = STARTUP_WARNING_THROTTLE;
-#else
+  // we don't check the throttle stick if the radio is not calibrated
   if (g_eeGeneral.chkSum == evalChkSum()) {
-    checkTHR();
+#if defined(FLYSKY_GIMBAL) // delay necessary for the throttle check to successfully detect when serial flysky gimbal throttle is not at zero
+    sleep_ms(25);
+#endif    
+    checkThrottleStick();
   }
+
   checkSwitches();
   checkFailsafe();
-#endif
-#if defined(CPUARM)
-  checkRSSIAlarmsDisabled();
-#endif
 
-#if defined(SDCARD) && defined(CPUARM)
+#if defined(SDCARD)
   checkSDVersion();
 #endif
 
-#if defined(CPUARM)
+#if defined(SDCARD)
   if (g_model.displayChecklist && modelHasNotes()) {
-    pushModelNotes();
+    readModelNotes();
   }
 #endif
 
-#if defined(CPUARM)
-  if (!clearKeyEvents()) {
+  if (!waitKeysReleased()) {
     showMessageBox(STR_KEYSTUCK);
     tmr10ms_t tgtime = get_tmr10ms() + 500;
     while (tgtime != get_tmr10ms()) {
-#if defined(SIMU)
-      SIMU_SLEEP(1);
-#elif defined(CPUARM)
-      CoTickDelay(1);
-#endif
-      wdt_reset();
+      sleep_ms(1);
+      WDG_RESET();
     }
   }
-#else    // #if defined(CPUARM)
-  clearKeyEvents();
-#endif   // #if defined(CPUARM)
 
   START_SILENCE_PERIOD();
 }
-#endif // GUI
-
-#if defined(MODULE_ALWAYS_SEND_PULSES)
-void checkStartupWarnings()
-{
-  if (startupWarningState < STARTUP_WARNING_DONE) {
-    if (startupWarningState == STARTUP_WARNING_THROTTLE)
-      checkTHR();
-    else
-      checkSwitches();
-  }
-}
-#endif
+#endif  // GUI
 
 #if defined(EEPROM_RLC)
-void checkLowEEPROM()
-{
-  if (g_eeGeneral.disableMemoryWarning) return;
+void checkLowEEPROM() {
+  if (g_eeGeneral.disableMemoryWarning)
+    return;
   if (EeFsGetFree() < 100) {
     ALERT(STR_STORAGE_WARNING, STR_EEPROMLOWMEM, AU_ERROR);
   }
 }
 #endif
 
-void checkTHR()
+bool isThrottleWarningAlertNeeded()
 {
-  uint8_t thrchn = ((g_model.thrTraceSrc==0) || (g_model.thrTraceSrc>NUM_POTS+NUM_SLIDERS)) ? THR_STICK : g_model.thrTraceSrc+NUM_STICKS-1;
+  if (g_model.disableThrottleWarning) {
+    return false;
+  }
   // throttle channel is either the stick according stick mode (already handled in evalInputs)
   // or P1 to P3;
   // in case an output channel is choosen as throttle source (thrTraceSrc>NUM_POTS+NUM_SLIDERS) we assume the throttle stick is the input
   // no other information available at the moment, and good enough to my option (otherwise too much exceptions...)
-
-#if defined(MODULE_ALWAYS_SEND_PULSES)
-  int16_t v = calibratedAnalogs[thrchn];
-  if (v<=THRCHK_DEADBAND-1024 || g_model.disableThrottleWarning || pwrCheck()==e_power_off || keyDown()) {
-    startupWarningState = STARTUP_WARNING_THROTTLE+1;
-  }
-  else {
-    calibratedAnalogs[thrchn] = -1024;
-#if !defined(VIRTUAL_INPUTS)
-    if (thrchn < NUM_STICKS) {
-      rawAnas[thrchn] = anas[thrchn] = calibratedAnalogs[thrchn];
-    }
-#endif
-    RAISE_ALERT(STR_THROTTLEWARN, STR_THROTTLENOTIDLE, STR_PRESSANYKEYTOSKIP, AU_THROTTLE_ALERT);
-  }
-#else
-  if (g_model.disableThrottleWarning) {
-    return;
-  }
+  uint8_t thrchn = ((g_model.thrTraceSrc==0) || (g_model.thrTraceSrc>NUM_POTS+NUM_SLIDERS)) ? THR_STICK : g_model.thrTraceSrc+NUM_STICKS-1;
 
   GET_ADC_IF_MIXER_NOT_RUNNING();
-
-  evalInputs(e_perout_mode_notrainer); // let do evalInputs do the job
+  evalInputs(e_perout_mode_notrainer);  // let do evalInputs do the job
 
   int16_t v = calibratedAnalogs[thrchn];
-  if (g_model.thrTraceSrc && g_model.throttleReversed) { //TODO : proper review of THR source definition and handling
+  if (g_model.thrTraceSrc && g_model.throttleReversed) {  // TODO : proper review of THR source definition and handling
     v = -v;
   }
-  if (v <= THRCHK_DEADBAND-1024) {
-    return; // prevent warning if throttle input OK
+  return v > THRCHK_DEADBAND - RESX;
+}
+
+void checkThrottleStick()
+{
+  if (!isThrottleWarningAlertNeeded()) {
+    return;
   }
 
   // first - display warning; also deletes inputs if any have been before
   LED_ERROR_BEGIN();
   RAISE_ALERT(STR_THROTTLEWARN, STR_THROTTLENOTIDLE, STR_PRESSANYKEYTOSKIP, AU_THROTTLE_ALERT);
 
-#if defined(PWR_BUTTON_PRESS)
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
   bool refresh = false;
 #endif
 
-  while (1) {
-
-    GET_ADC_IF_MIXER_NOT_RUNNING();
-
-    evalInputs(e_perout_mode_notrainer); // let do evalInputs do the job
-
-    v = calibratedAnalogs[thrchn];
-    if (g_model.thrTraceSrc && g_model.throttleReversed) { //TODO : proper review of THR source definition and handling
-      v = -v;
+  while (!getEvent()) {
+    if (!isThrottleWarningAlertNeeded()) {
+      return;
     }
 
-#if defined(PWR_BUTTON_PRESS)
-    uint32_t pwr_check = pwrCheck();
-    if (pwr_check == e_power_off) {
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
+    uint32_t power = pwrCheck();
+    if (power == e_power_off) {
       break;
-    }
-    else if (pwr_check == e_power_press) {
+    } else if (power == e_power_press) {
       refresh = true;
-    }
-    else if (pwr_check == e_power_on && refresh) {
+    } else if (power == e_power_on && refresh) {
       RAISE_ALERT(STR_THROTTLEWARN, STR_THROTTLENOTIDLE, STR_PRESSANYKEYTOSKIP, AU_NONE);
       refresh = false;
     }
@@ -1226,26 +830,17 @@ void checkTHR()
     }
 #endif
 
-    if (keyDown() || v <= THRCHK_DEADBAND-1024) {
-      break;
-    }
+    checkBacklight();
 
-    doLoopCommonActions();
+    WDG_RESET();
 
-    wdt_reset();
-
-    SIMU_SLEEP(1);
-#if defined(CPUARM)
-    CoTickDelay(10);
-#endif
-
+    sleep_ms(10);
   }
-#endif
 
   LED_ERROR_END();
 }
 
-void checkAlarm() // added by Gohst
+void checkAlarm()  // added by Gohst
 {
   if (g_eeGeneral.disableAlarmWarning) {
     return;
@@ -1256,47 +851,41 @@ void checkAlarm() // added by Gohst
   }
 }
 
-void alert(const pm_char * title, const pm_char * msg ALERT_SOUND_ARG)
-{
+void alert(const char *title, const char *msg, uint8_t sound) {
   LED_ERROR_BEGIN();
 
   TRACE("ALERT %s: %s", title, msg);
 
   RAISE_ALERT(title, msg, STR_PRESSANYKEY, sound);
 
-#if defined(PWR_BUTTON_PRESS)
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
   bool refresh = false;
 #endif
 
   while (1) {
-    SIMU_SLEEP(1);
-#if defined(CPUARM)
-    CoTickDelay(10);
-#endif
+    sleep_ms(10);
 
-    if (keyDown()) break; // wait for key release
+    if (keyDown())  // wait for key release
+      break;
 
-    doLoopCommonActions();
+    checkBacklight();
 
-    wdt_reset();
+    WDG_RESET();
 
-#if defined(PWR_BUTTON_PRESS)
-    uint32_t pwr_check = pwrCheck();
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
+    const uint32_t pwr_check = pwrCheck();
     if (pwr_check == e_power_off) {
       drawSleepBitmap();
       boardOff();
+      return;  // only happens in SIMU, required for proper shutdown
     }
+#endif
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
     else if (pwr_check == e_power_press) {
       refresh = true;
-    }
-    else if (pwr_check == e_power_on && refresh) {
+    } else if (pwr_check == e_power_on && refresh) {
       RAISE_ALERT(title, msg, STR_PRESSANYKEY, AU_NONE);
       refresh = false;
-    }
-#else
-    if (pwrCheck() == e_power_off) {
-      drawSleepBitmap();
-      boardOff(); // turn power off now
     }
 #endif
   }
@@ -1306,143 +895,116 @@ void alert(const pm_char * title, const pm_char * msg ALERT_SOUND_ARG)
 
 #if defined(GVARS)
 #if NUM_TRIMS == 6
-  int8_t trimGvar[NUM_TRIMS] = { -1, -1, -1, -1, -1, -1 };
+int8_t trimGvar[NUM_TRIMS] = {-1, -1, -1, -1, -1, -1};
 #elif NUM_TRIMS == 4
-  int8_t trimGvar[NUM_TRIMS] = { -1, -1, -1, -1 };
+int8_t trimGvar[NUM_TRIMS] = {-1, -1, -1, -1};
 #elif NUM_TRIMS == 2
-  int8_t trimGvar[NUM_TRIMS] = { -1, -1 };
+int8_t trimGvar[NUM_TRIMS] = {-1, -1};
 #endif
 #endif
 
-#if defined(CPUARM)
-void checkTrims()
-{
+void checkTrims() {
   event_t event = getEvent(true);
   if (event && !IS_KEY_BREAK(event)) {
     int8_t k = EVT_KEY_MASK(event) - TRM_BASE;
-#else
-uint8_t checkTrim(event_t event)
-{
-  int8_t k = EVT_KEY_MASK(event) - TRM_BASE;
-  if (k>=0 && k<8 && !IS_KEY_BREAK(event)) {
-#endif
     // LH_DWN LH_UP LV_DWN LV_UP RV_DWN RV_UP RH_DWN RH_UP
-    uint8_t idx = CONVERT_MODE((uint8_t)k/2);
+    uint8_t idx = CONVERT_MODE_TRIMS((uint8_t)k / 2);
     uint8_t phase;
     int before;
     bool thro;
 
-#if defined(CPUARM)
-    trimsDisplayTimer = 200; // 2 seconds
-    trimsDisplayMask |= (1<<idx);
-#endif
+    trimsDisplayTimer = 200;  // 2 seconds
+    trimsDisplayMask |= (1 << idx);
 
 #if defined(GVARS)
     if (TRIM_REUSED(idx)) {
-#if defined(PCBSTD)
-      phase = 0;
-#else
       phase = getGVarFlightMode(mixerCurrentFlightMode, trimGvar[idx]);
-#endif
       before = GVAR_VALUE(trimGvar[idx], phase);
       thro = false;
-    }
-    else {
+    } else {
       phase = getTrimFlightMode(mixerCurrentFlightMode, idx);
-#if defined(CPUARM)
       before = getTrimValue(phase, idx);
-#else
-      before = getRawTrimValue(phase, idx);
-#endif
-      thro = (IS_THROTTLE_TRIM(idx) && g_model.thrTrim);
+      thro = (idx == THR_STICK && g_model.thrTrim);
     }
 #else
     phase = getTrimFlightMode(mixerCurrentFlightMode, idx);
-#if defined(CPUARM)
     before = getTrimValue(phase, idx);
-#else
-    before = getRawTrimValue(phase, idx);
-#endif
-    thro = (IS_THROTTLE_TRIM(idx) && g_model.thrTrim);
+    thro = (idx == THR_STICK && g_model.thrTrim);
 #endif
     int8_t trimInc = g_model.trimInc + 1;
-    int8_t v = (trimInc==-1) ? min(32, abs(before)/4+1) : (1 << trimInc); // TODO flash saving if (trimInc < 0)
-    if (thro) v = 4; // if throttle trim and trim trottle then step=4
-    int16_t after = (k&1) ? before + v : before - v;   // positive = k&1
+    int8_t v = (trimInc == -1) ? min(32, abs(before) / 4 + 1) : (1 << trimInc);  // TODO flash saving if (trimInc < 0)
+    if (thro)
+      v = 4;  // if throttle trim and trim trottle then step=4
+#if defined(GVARS)
+    if (TRIM_REUSED(idx))
+      v = 1;
+#endif
+    int16_t after = (k & 1) ? before + v : before - v;  // positive = k&1
     bool beepTrim = false;
 
-    if (!thro && before!=0 && ((!(after < 0) == (before < 0)) || after==0)) { //forcing a stop at centerered trim when changing sides
+    if (!thro && before != 0 && ((!(after < 0) == (before < 0)) || after == 0)) {  //forcing a stop at centerered trim when changing sides
       after = 0;
       beepTrim = true;
       AUDIO_TRIM_MIDDLE();
       pauseEvents(event);
     }
-    else if (before>TRIM_MIN && after<=TRIM_MIN) {
-      beepTrim = true;
-      AUDIO_TRIM_MIN();
-      killEvents(event);
-    }
-    else if (before<TRIM_MAX && after>=TRIM_MAX) {
-      beepTrim = true;
-      AUDIO_TRIM_MAX();
-      killEvents(event);
-    }
-
-    if ((before<after && after>TRIM_MAX) || (before>after && after<TRIM_MIN)) {
-      if (!g_model.extendedTrims || TRIM_REUSED(idx)) after = before;
-    }
-
-    if (after < TRIM_EXTENDED_MIN) {
-      after = TRIM_EXTENDED_MIN;
-    }
-    if (after > TRIM_EXTENDED_MAX) {
-      after = TRIM_EXTENDED_MAX;
-    }
 
 #if defined(GVARS)
     if (TRIM_REUSED(idx)) {
-      SET_GVAR_VALUE(trimGvar[idx], phase, after);
-    }
-    else
+      int8_t gvar = trimGvar[idx];
+      int16_t vmin = GVAR_MIN + g_model.gvars[gvar].min;
+      int16_t vmax = GVAR_MAX - g_model.gvars[gvar].max;
+      if (after < vmin) {
+        after = vmin;
+        beepTrim = true;
+        AUDIO_TRIM_MIN();
+        killEvents(event);
+      } else if (after > vmax) {
+        after = vmax;
+        beepTrim = true;
+        AUDIO_TRIM_MAX();
+        killEvents(event);
+      }
+
+      SET_GVAR_VALUE(gvar, phase, after);
+    } else
 #endif
     {
-#if defined(CPUARM)
+      if (before > TRIM_MIN && after <= TRIM_MIN) {
+        beepTrim = true;
+        AUDIO_TRIM_MIN();
+        killEvents(event);
+      } else if (before < TRIM_MAX && after >= TRIM_MAX) {
+        beepTrim = true;
+        AUDIO_TRIM_MAX();
+        killEvents(event);
+      }
+
+      if ((before < after && after > TRIM_MAX) || (before > after && after < TRIM_MIN)) {
+        if (!g_model.extendedTrims)
+          after = before;
+      }
+
+      if (after < TRIM_EXTENDED_MIN) {
+        after = TRIM_EXTENDED_MIN;
+      } else if (after > TRIM_EXTENDED_MAX) {
+        after = TRIM_EXTENDED_MAX;
+      }
+
       if (!setTrimValue(phase, idx, after)) {
         // we don't play a beep, so we exit now the function
         return;
       }
-#else
-      setTrimValue(phase, idx, after);
-#endif
     }
 
     if (!beepTrim) {
       AUDIO_TRIM_PRESS(after);
     }
-
-#if !defined(CPUARM)
-    return 0;
-#endif
   }
-#if !defined(CPUARM)
-  return event;
-#endif
 }
 
 #if !defined(SIMU)
 uint16_t s_anaFilt[NUM_ANALOGS];
-#endif
-
-#if defined(SIMU)
-uint16_t BandGap = 225;
-#elif defined(CPUM2560)
-// #define STARTADCONV (ADCSRA  = (1<<ADEN) | (1<<ADPS0) | (1<<ADPS1) | (1<<ADPS2) | (1<<ADSC) | (1 << ADIE))
-// G: Note that the above would have set the ADC prescaler to 128, equating to
-// 125KHz sample rate. We now sample at 500KHz, with oversampling and other
-// filtering options to produce 11-bit results.
-uint16_t BandGap = 2040;
-#elif defined(PCBSTD)
-uint16_t BandGap;
 #endif
 
 #if defined(JITTER_MEASURE)
@@ -1451,55 +1013,26 @@ JitterMeter<uint16_t> avgJitter[NUM_ANALOGS];
 tmr10ms_t jitterResetTime = 0;
 #endif
 
-#if defined(VIRTUAL_INPUTS)
-  #define JITTER_FILTER_STRENGTH  4         // tune this value, bigger value - more filtering (range: 1-5) (see explanation below)
-  #define ANALOG_SCALE            1         // tune this value, bigger value - more filtering (range: 0-1) (see explanation below)
+#define JITTER_FILTER_STRENGTH 4  // tune this value, bigger value - more filtering (range: 1-5) (see explanation below)
+#define ANALOG_SCALE 1            // tune this value, bigger value - more filtering (range: 0-1) (see explanation below)
 
-  #define JITTER_ALPHA            (1<<JITTER_FILTER_STRENGTH)
-  #define ANALOG_MULTIPLIER       (1<<ANALOG_SCALE)
-  #define ANA_FILT(chan)          (s_anaFilt[chan] / (JITTER_ALPHA * ANALOG_MULTIPLIER))
-  #if (JITTER_ALPHA * ANALOG_MULTIPLIER > 32)
-    #error "JITTER_FILTER_STRENGTH and ANALOG_SCALE are too big, their summ should be <= 5 !!!"
-  #endif
-#else
-  #define ANALOG_SCALE            0
-  #define JITTER_ALPHA            1
-  #define ANALOG_MULTIPLIER       1
-  #define ANA_FILT(chan)          (s_anaFilt[chan])
+#define JITTER_ALPHA (1 << JITTER_FILTER_STRENGTH)
+#define ANALOG_MULTIPLIER (1 << ANALOG_SCALE)
+#define ANA_FILT(chan) (s_anaFilt[chan] / (JITTER_ALPHA * ANALOG_MULTIPLIER))
+#if (JITTER_ALPHA * ANALOG_MULTIPLIER > 32)
+#error "JITTER_FILTER_STRENGTH and ANALOG_SCALE are too big, their summ should be <= 5 !!!"
 #endif
-
 
 #if !defined(SIMU)
-uint16_t anaIn(uint8_t chan)
-{
-#if defined(VIRTUAL_INPUTS)
+uint16_t anaIn(uint8_t chan) {
   return ANA_FILT(chan);
-#else
-#if defined(TELEMETRY_MOD_14051) || defined(TELEMETRY_MOD_14051_SWAPPED)
-  static const pm_char crossAna[] PROGMEM = {3,1,2,0,4,5,6,0/* shouldn't be used */,TX_VOLTAGE};
-#else
-  static const pm_char crossAna[] PROGMEM = {3,1,2,0,4,5,6,7};
-#endif
-#if defined(FRSKY_STICKS)
-  volatile uint16_t temp = s_anaFilt[pgm_read_byte(crossAna+chan)];  // volatile saves here 40 bytes; maybe removed for newer AVR when available
-  if (chan < NUM_STICKS && (g_eeGeneral.stickReverse & (1 << chan))) {
-    temp = 2048 - temp;
-  }
-  return temp;
-#else
-  volatile uint16_t *p = &s_anaFilt[pgm_read_byte(crossAna+chan)];
-  return *p;
-#endif
-#endif
 }
 
-#if defined(CPUARM)
-void getADC()
-{
+void getADC() {
 #if defined(JITTER_MEASURE)
   if (JITTER_MEASURE_ACTIVE() && jitterResetTime < get_tmr10ms()) {
     // reset jitter measurement every second
-    for (uint32_t x=0; x<NUM_ANALOGS; x++) {
+    for (uint32_t x = 0; x < NUM_ANALOGS; x++) {
       rawJitter[x].reset();
       avgJitter[x].reset();
     }
@@ -1511,10 +1044,9 @@ void getADC()
   adcRead();
   DEBUG_TIMER_STOP(debugTimerAdcRead);
 
-  for (uint8_t x=0; x<NUM_ANALOGS; x++) {
+  for (uint8_t x = 0; x < NUM_ANALOGS; x++) {
     uint16_t v = getAnalogValue(x) >> (1 - ANALOG_SCALE);
 
-#if defined(VIRTUAL_INPUTS)
     // Jitter filter:
     //    * pass trough any big change directly
     //    * for small change use Modified moving average (MMA) filter
@@ -1551,14 +1083,11 @@ void getADC()
     //   * <out> = s_anaFilt[x]
     uint16_t previous = s_anaFilt[x] / JITTER_ALPHA;
     uint16_t diff = (v > previous) ? (v - previous) : (previous - v);
-    if (!g_eeGeneral.jitterFilter && diff < (10*ANALOG_MULTIPLIER)) { // g_eeGeneral.jitterFilter is inverted, 0 - active
+    if (!g_eeGeneral.jitterFilter && diff < (10 * ANALOG_MULTIPLIER)) {  // g_eeGeneral.jitterFilter is inverted, 0 - active
       // apply jitter filter
       s_anaFilt[x] = (s_anaFilt[x] - previous) + v;
-    }
-    else
-#endif  // #if defined(VIRTUAL_INPUTS)
-    {
-    	//use unfiltered value
+    } else {
+      // use unfiltered value
       s_anaFilt[x] = v * JITTER_ALPHA;
     }
 
@@ -1568,13 +1097,13 @@ void getADC()
     }
 #endif
 
-    #define ANAFILT_MAX    (2 * RESX * JITTER_ALPHA * ANALOG_MULTIPLIER - 1)
-    StepsCalibData * calib = (StepsCalibData *) &g_eeGeneral.calib[x];
+#define ANAFILT_MAX (2 * RESX * JITTER_ALPHA * ANALOG_MULTIPLIER - 1)
+    StepsCalibData *calib = (StepsCalibData *)&g_eeGeneral.calib[x];
     if (IS_POT_MULTIPOS(x) && IS_MULTIPOS_CALIBRATED(calib)) {
       // TODO: consider adding another low pass filter to eliminate multipos switching glitches
       uint8_t vShifted = ANA_FILT(x) >> 4;
       s_anaFilt[x] = ANAFILT_MAX;
-      for (uint32_t i=0; i<calib->count; i++) {
+      for (uint32_t i = 0; i < calib->count; i++) {
         if (vShifted < calib->steps[i]) {
           s_anaFilt[x] = (i * ANAFILT_MAX) / calib->count;
           break;
@@ -1583,27 +1112,23 @@ void getADC()
     }
   }
 }
-#endif  // #if defined(CPUARM)
 
-#endif // SIMU
+#endif  // SIMU
 
 uint8_t g_vbat100mV = 0;
 uint16_t lightOffCounter;
 uint8_t flashCounter = 0;
 
 uint16_t sessionTimer;
-uint16_t s_timeCumThr;    // THR in 1/16 sec
-uint16_t s_timeCum16ThrP; // THR% in 1/16 sec
+uint16_t s_timeCumThr;     // THR in 1/16 sec
+uint16_t s_timeCum16ThrP;  // THR% in 1/16 sec
 
-uint8_t  trimsCheckTimer = 0;
+uint8_t trimsCheckTimer = 0;
 
-#if defined(CPUARM)
 uint8_t trimsDisplayTimer = 0;
 uint8_t trimsDisplayMask = 0;
-#endif
 
-void flightReset(uint8_t check)
-{
+void flightReset(uint8_t check) {
   // we don't reset the whole audio here (the hello.wav would be cut, if a prompt is queued before FlightReset, it should be played)
   // TODO check if the vario / background music are stopped correctly if switching to a model which doesn't have these functions enabled
 
@@ -1641,43 +1166,32 @@ void flightReset(uint8_t check)
 }
 
 #if defined(THRTRACE)
-uint8_t  s_traceBuf[MAXTRACE];
+uint8_t s_traceBuf[MAXTRACE];
 uint16_t s_traceWr;
-uint8_t  s_cnt_10s;
+uint8_t s_cnt_10s;
 uint16_t s_cnt_samples_thr_10s;
 uint16_t s_sum_samples_thr_10s;
 #endif
 
-void evalTrims()
-{
+void evalTrims() {
   uint8_t phase = mixerCurrentFlightMode;
-  for (uint8_t i=0; i<NUM_TRIMS; i++) {
+  for (uint32_t i = 0; i < NUM_TRIMS; i++) {
     // do trim -> throttle trim if applicable
     int16_t trim = getTrimValue(phase, i);
-#if !defined(CPUARM)
-    if (i==THR_STICK && g_model.thrTrim) {
-      int16_t trimMin = g_model.extendedTrims ? TRIM_EXTENDED_MIN : TRIM_MIN;
-      trim = (((g_model.throttleReversed)?(int32_t)(trim+trimMin):(int32_t)(trim-trimMin)) * (RESX-anas[i])) >> (RESX_SHIFT+1);
-    }
-#endif
     if (trimsCheckTimer > 0) {
       trim = 0;
     }
 
-    trims[i] = trim*2;
+    trims[i] = trim * 2;
   }
 }
 
-#if !defined(PCBSTD)
-uint8_t mSwitchDuration[1+NUM_ROTARY_ENCODERS] = { 0 };
-#define CFN_PRESSLONG_DURATION   100
-#endif
-
+uint8_t mSwitchDuration[1 + NUM_ROTARY_ENCODERS] = {0};
+#define CFN_PRESSLONG_DURATION 100
 
 uint8_t s_mixer_first_run_done = false;
 
-void doMixerCalculations()
-{
+void doMixerCalculations() {
   static tmr10ms_t lastTMR = 0;
 
   tmr10ms_t tmr10ms = get_tmr10ms();
@@ -1695,40 +1209,30 @@ void doMixerCalculations()
   getSwitchesPosition(!s_mixer_first_run_done);
   DEBUG_TIMER_STOP(debugTimerGetSwitches);
 
-#if defined(PCBSKY9X) && !defined(REVA) && !defined(SIMU)
-  Current_analogue = (Current_analogue*31 + s_anaFilt[8] ) >> 5 ;
-  if (Current_analogue > Current_max)
-    Current_max = Current_analogue ;
-#endif
-
-#if !defined(CPUARM)
-  adcPrepareBandgap();
-#endif
-
   DEBUG_TIMER_START(debugTimerEvalMixes);
   evalMixes(tick10ms);
   DEBUG_TIMER_STOP(debugTimerEvalMixes);
+}
 
-#if !defined(CPUARM)
-  // Bandgap has had plenty of time to settle...
-  getADC_bandgap();
-#endif
+void doMixerPeriodicUpdates()
+{
+  static tmr10ms_t lastTMR = 0;
 
+  tmr10ms_t tmr10ms = get_tmr10ms();
+
+  uint8_t tick10ms = (tmr10ms >= lastTMR ? tmr10ms - lastTMR : 1);
+  // handle tick10ms overrun
+  // correct overflow handling costs a lot of code; happens only each 11 min;
+  // therefore forget the exact calculation and use only 1 instead; good compromise
+  lastTMR = tmr10ms;
+  
   DEBUG_TIMER_START(debugTimerMixes10ms);
   if (tick10ms) {
-
-#if !defined(CPUM64) && !defined(ACCURAT_THROTTLE_TIMER)
-    //  code cost is about 16 bytes for higher throttle accuracy for timer
-    //  would not be noticable anyway, because all version up to this change had only 16 steps;
-    //  now it has already 32  steps; this define would increase to 128 steps
-    #define ACCURAT_THROTTLE_TIMER
-#endif
-
     /* Throttle trace */
     int16_t val;
 
-    if (g_model.thrTraceSrc > NUM_POTS+NUM_SLIDERS) {
-      uint8_t ch = g_model.thrTraceSrc-NUM_POTS-NUM_SLIDERS-1;
+    if (g_model.thrTraceSrc > NUM_POTS + NUM_SLIDERS) {
+      uint8_t ch = g_model.thrTraceSrc - NUM_POTS - NUM_SLIDERS - 1;
       val = channelOutputs[ch];
 
       LimitData *lim = limitAddress(ch);
@@ -1746,80 +1250,56 @@ void doMixerCalculations()
       }
 #endif
 
-      gModelMax -= gModelMin; // we compare difference between Max and Mix for recaling needed; Max and Min are shifted to 0 by default
+      gModelMax -= gModelMin;  // we compare difference between Max and Mix for recaling needed; Max and Min are shifted to 0 by default
       // usually max is 1024 min is -1024 --> max-min = 2048 full range
 
-#ifdef ACCURAT_THROTTLE_TIMER
-      if (gModelMax!=0 && gModelMax!=2048) val = (int32_t) (val << 11) / (gModelMax); // rescaling only needed if Min, Max differs
-#else
-      // @@@ open.20.fsguruh  optimized calculation; now *8 /8 instead of 10 base; (*16/16 already cause a overrun; unsigned calculation also not possible, because v may be negative)
-      gModelMax+=255; // force rounding up --> gModelMax is bigger --> val is smaller
-      gModelMax >>= (10-2);
+      if (gModelMax != 0 && gModelMax != 2048)
+        val = (int32_t)(val << 11) / (gModelMax);  // rescaling only needed if Min, Max differs
 
-      if (gModelMax!=0 && gModelMax!=8) {
-        val = (val << 3) / gModelMax; // rescaling only needed if Min, Max differs
-      }
-#endif
-
-      if (val<0) val=0;  // prevent val be negative, which would corrupt throttle trace and timers; could occur if safetyswitch is smaller than limits
-    }
-    else {
-#if defined(VIRTUAL_INPUTS)
-      val = RESX + calibratedAnalogs[g_model.thrTraceSrc == 0 ? THR_STICK : g_model.thrTraceSrc+NUM_STICKS-1];
-#else
-      val = RESX + (g_model.thrTraceSrc == 0 ? rawAnas[THR_STICK] : calibratedAnalogs[g_model.thrTraceSrc+NUM_STICKS-1]);
-#endif
+      if (val < 0)
+        val = 0;  // prevent val be negative, which would corrupt throttle trace and timers; could occur if safetyswitch is smaller than limits
+    } else {
+      val = RESX + calibratedAnalogs[g_model.thrTraceSrc == 0 ? THR_STICK : g_model.thrTraceSrc + NUM_STICKS - 1];
     }
 
-#if defined(ACCURAT_THROTTLE_TIMER)
-    val >>= (RESX_SHIFT-6); // calibrate it (resolution increased by factor 4)
-#else
-    val >>= (RESX_SHIFT-4); // calibrate it
-#endif
+    val >>= (RESX_SHIFT - 6);  // calibrate it (resolution increased by factor 4)
 
     evalTimers(val, tick10ms);
 
-    static uint8_t  s_cnt_100ms;
-    static uint8_t  s_cnt_1s;
-    static uint8_t  s_cnt_samples_thr_1s;
+    static uint8_t s_cnt_100ms;
+    static uint8_t s_cnt_1s;
+    static uint8_t s_cnt_samples_thr_1s;
     static uint16_t s_sum_samples_thr_1s;
 
     s_cnt_samples_thr_1s++;
-    s_sum_samples_thr_1s+=val;
+    s_sum_samples_thr_1s += val;
 
-    if ((s_cnt_100ms += tick10ms) >= 10) { // 0.1sec
+    if ((s_cnt_100ms += tick10ms) >= 10) {  // 0.1sec
       s_cnt_100ms -= 10;
       s_cnt_1s += 1;
 
       logicalSwitchesTimerTick();
+#if defined(SBUS_TRAINER)
       checkTrainerSignalWarning();
-
-      if (s_cnt_1s >= 10) { // 1sec
+#endif
+      if (s_cnt_1s >= 10) {  // 1sec
         s_cnt_1s -= 10;
         sessionTimer += 1;
-
-        struct t_inactivity *ptrInactivity = &inactivity;
-        FORCE_INDIRECT(ptrInactivity) ;
-        ptrInactivity->counter++;
-        if ((((uint8_t)ptrInactivity->counter)&0x07)==0x01 && g_eeGeneral.inactivityTimer && g_vbat100mV>50 && ptrInactivity->counter > ((uint16_t)g_eeGeneral.inactivityTimer*60))
+        inactivity.counter++;
+        if ((((uint8_t)inactivity.counter) & 0x07) == 0x01 && g_eeGeneral.inactivityTimer && inactivity.counter > ((uint16_t)g_eeGeneral.inactivityTimer * 60))
           AUDIO_INACTIVITY();
 
-#if defined(AUDIO)
-        if (mixWarning & 1) if ((sessionTimer&0x03)==0) AUDIO_MIX_WARNING(1);
-        if (mixWarning & 2) if ((sessionTimer&0x03)==1) AUDIO_MIX_WARNING(2);
-        if (mixWarning & 4) if ((sessionTimer&0x03)==2) AUDIO_MIX_WARNING(3);
+#if defined(AUDIO) || defined(PCBI6X)
+        if (mixWarning & 1) if ((sessionTimer & 0x03) == 0) AUDIO_MIX_WARNING(1);
+        if (mixWarning & 2) if ((sessionTimer & 0x03) == 1) AUDIO_MIX_WARNING(2);
+        if (mixWarning & 4) if ((sessionTimer & 0x03) == 2) AUDIO_MIX_WARNING(3);
 #endif
 
-#if defined(ACCURAT_THROTTLE_TIMER)
         val = s_sum_samples_thr_1s / s_cnt_samples_thr_1s;
-        s_timeCum16ThrP += (val>>3);  // s_timeCum16ThrP would overrun if we would store throttle value with higher accuracy; therefore stay with 16 steps
-        if (val) s_timeCumThr += 1;
-        s_sum_samples_thr_1s>>=2;  // correct better accuracy now, because trace graph can show this information; in case thrtrace is not active, the compile should remove this
-#else
-        val = s_sum_samples_thr_1s / s_cnt_samples_thr_1s;
-        s_timeCum16ThrP += (val>>1);
-        if (val) s_timeCumThr += 1;
-#endif
+        s_timeCum16ThrP += (val >> 3);  // s_timeCum16ThrP would overrun if we would store throttle value with higher accuracy; therefore stay with 16 steps
+        if (val)
+          s_timeCumThr += 1;
+        s_sum_samples_thr_1s >>= 2;  // correct better accuracy now, because trace graph can show this information; in case thrtrace is not active, the compile should remove this
 
 #if defined(THRTRACE)
         // throttle trace is done every 10 seconds; Tracebuffer is adjusted to screen size.
@@ -1828,7 +1308,7 @@ void doMixerCalculations()
         s_cnt_samples_thr_10s += s_cnt_samples_thr_1s;
         s_sum_samples_thr_10s += s_sum_samples_thr_1s;
 
-        if (++s_cnt_10s >= 10) { // 10s
+        if (++s_cnt_10s >= 10) {  // 10s
           s_cnt_10s -= 10;
           val = s_sum_samples_thr_10s / s_cnt_samples_thr_10s;
           s_sum_samples_thr_10s = 0;
@@ -1843,13 +1323,13 @@ void doMixerCalculations()
       }
     }
 
-#if defined(PXX) || defined(DSM2)
+#if defined(PXX) || defined(DSM2) || defined(PCBI6X)
     static uint8_t countRangecheck = 0;
-    for (uint8_t i=0; i<NUM_MODULES; ++i) {
+    for (uint32_t i = 0; i < NUM_MODULES; ++i) {
 #if defined(MULTIMODULE)
-      if (moduleFlag[i] != MODULE_NORMAL_MODE || (i == EXTERNAL_MODULE && multiModuleStatus.isBinding())) {
+      if (moduleState[i].mode != MODULE_MODE_NORMAL || (i == EXTERNAL_MODULE && multiModuleStatus.isBinding())) {
 #else
-      if (moduleFlag[i] != MODULE_NORMAL_MODE) {
+      if (moduleState[i].mode != MODULE_MODE_NORMAL) {
 #endif
         if (++countRangecheck >= 250) {
           countRangecheck = 0;
@@ -1859,75 +1339,30 @@ void doMixerCalculations()
     }
 #endif
 
-#if defined(CPUARM)
     checkTrims();
-#endif
   }
   DEBUG_TIMER_STOP(debugTimerMixes10ms);
 
   s_mixer_first_run_done = true;
 }
 
-#if defined(NAVIGATION_STICKS)
-uint8_t StickScrollAllowed;
-uint8_t StickScrollTimer;
-static const pm_uint8_t rate[] PROGMEM = { 0, 0, 100, 40, 16, 7, 3, 1 } ;
-
-uint8_t calcStickScroll( uint8_t index )
-{
-  uint8_t direction;
-  int8_t value;
-
-  if ( ( g_eeGeneral.stickMode & 1 ) == 0 )
-    index ^= 3;
-
-  value = calibratedAnalogs[index] / 128;
-  direction = value > 0 ? 0x80 : 0;
-  if (value < 0)
-    value = -value;                        // (abs)
-  if (value > 7)
-    value = 7;
-  value = pgm_read_byte(rate+(uint8_t)value);
-  if (value)
-    StickScrollTimer = STICK_SCROLL_TIMEOUT;               // Seconds
-  return value | direction;
-}
+#if !defined(OPENTX_START_DEFAULT_ARGS)
+#define OPENTX_START_DEFAULT_ARGS 0
 #endif
 
-#if defined(CPUARM)
-  #define OPENTX_START_ARGS            uint8_t splash=true
-  #define OPENTX_START_SPLASH_NEEDED() (splash)
-#else
-  #define OPENTX_START_ARGS
-  #define OPENTX_START_SPLASH_NEEDED() true
-#endif
+void opentxStart(const uint8_t startOptions = OPENTX_START_DEFAULT_ARGS) {
+  TRACE("opentxStart(%u)", startOptions);
 
-void opentxStart(OPENTX_START_ARGS)
-{
-  TRACE("opentxStart");
-
-#if defined(SIMU)
-  if (main_thread_running == 2) {
-    return;
-  }
-#endif
-
-  uint8_t calibration_needed = (g_eeGeneral.chkSum != evalChkSum());
+  uint8_t calibration_needed = !(startOptions & OPENTX_START_NO_CALIBRATION) && (g_eeGeneral.chkSum != evalChkSum());
 
 #if defined(GUI)
-  if (!calibration_needed && OPENTX_START_SPLASH_NEEDED()) {
+  if (!calibration_needed && !(startOptions & OPENTX_START_NO_SPLASH)) {
     doSplash();
   }
 #endif
 
 #if defined(DEBUG_TRACE_BUFFER)
   trace_event(trace_start, 0x12345678);
-#endif
-
-#if defined(PCBSKY9X) && defined(SDCARD) && !defined(SIMU)
-  for (int i=0; i<500 && !Card_initialized; i++) {
-    CoTickDelay(1);  // 2ms
-  }
 #endif
 
 #if defined(NIGHTLY_BUILD_WARNING)
@@ -1937,8 +1372,7 @@ void opentxStart(OPENTX_START_ARGS)
 #if defined(GUI)
   if (calibration_needed) {
     chainMenu(menuFirstCalib);
-  }
-  else {
+  } else if (!(startOptions & OPENTX_START_NO_CHECKS)) {
     checkAlarm();
     checkAll();
     PLAY_MODEL_NAME();
@@ -1946,16 +1380,13 @@ void opentxStart(OPENTX_START_ARGS)
 #endif
 }
 
-#if defined(CPUARM) || defined(CPUM2560)
-void opentxClose(uint8_t shutdown)
-{
+void opentxClose(uint8_t shutdown) {
   TRACE("opentxClose");
 
+  watchdogSuspend(2000 /*20s*/);
+
   if (shutdown) {
-#if defined(CPUARM)
-    watchdogSuspend(2000/*20s*/);
-#endif
-    pausePulses();   // stop mixer task to disable trims processing while in shutdown
+    pausePulses();  // stop mixer task to disable trims processing while in shutdown
     AUDIO_BYE();
 #if defined(TELEMETRY_FRSKY)
     // TODO needed? telemetryEnd();
@@ -1975,42 +1406,37 @@ void opentxClose(uint8_t shutdown)
   logsClose();
 #endif
 
-  storageFlushCurrentModel();
+  saveAllData();
 
-#if defined(CPUARM) && !defined(REVA)
-  if (sessionTimer > 0) {
-    g_eeGeneral.globalTimer += sessionTimer;
-    sessionTimer = 0;
-  }
-#endif
-
-#if defined(PCBSKY9X)
-  uint32_t mAhUsed = g_eeGeneral.mAhUsed + Current_used * (488 + g_eeGeneral.txCurrentCalibration) / 8192 / 36;
-  if (g_eeGeneral.mAhUsed != mAhUsed) {
-    g_eeGeneral.mAhUsed = mAhUsed;
-  }
-#endif
-
-  g_eeGeneral.unexpectedShutdown = 0;
-  storageDirty(EE_GENERAL);
-  storageCheck(true);
-
-#if defined(CPUARM)
+#if !defined(PCBI6X)
   while (IS_PLAYING(ID_PLAY_PROMPT_BASE + AU_BYE)) {
-    CoTickDelay(10);
+    sleep_ms(10);
   }
-  CoTickDelay(50);
 #endif
+
+  sleep_ms(100);
 
 #if defined(SDCARD)
   sdDone();
 #endif
 }
-#endif
+
+void saveAllData() {
+
+  storageFlushCurrentModel();
+
+  if (sessionTimer > 0) {
+    g_eeGeneral.globalTimer += sessionTimer;
+    sessionTimer = 0;
+  }
+
+  g_eeGeneral.unexpectedShutdown = 0;
+  storageDirty(EE_GENERAL);
+  storageCheck(true);
+}
 
 #if defined(STM32)
-void opentxResume()
-{
+void opentxResume() {
   TRACE("opentxResume");
 
   menuHandlers[0] = menuMainView;
@@ -2022,313 +1448,42 @@ void opentxResume()
   loadFontCache();
 #endif
 
-  opentxStart(false);
-
-#if defined(CPUARM)
+  // removed to avoid the double warnings (throttle, switch, etc.)
+  // opentxStart(OPENTX_START_NO_SPLASH | OPENTX_START_NO_CALIBRATION | OPENTX_START_NO_CHECKS);
+#if defined(AUDIO)
   referenceSystemAudioFiles();
 #endif
 
-#if defined(CPUARM) || defined(CPUM2560)
   if (!g_eeGeneral.unexpectedShutdown) {
     g_eeGeneral.unexpectedShutdown = 1;
     storageDirty(EE_GENERAL);
   }
-#endif
 }
 #endif
 
-#if defined(NAVIGATION_STICKS)
-uint8_t getSticksNavigationEvent()
-{
-  uint8_t evt = 0;
-  if (StickScrollAllowed) {
-    if ( StickScrollTimer ) {
-      static uint8_t repeater;
-      uint8_t direction;
-      uint8_t value;
+#define INSTANT_TRIM_MARGIN 10 /* around 1% */
 
-      if ( repeater < 128 )
-      {
-        repeater += 1;
-      }
-      value = calcStickScroll( 2 );
-      direction = value & 0x80;
-      value &= 0x7F;
-      if ( value )
-      {
-        if ( repeater > value )
-        {
-          repeater = 0;
-          if ( evt == 0 )
-          {
-            if ( direction )
-            {
-              evt = EVT_KEY_FIRST(KEY_UP);
-            }
-            else
-            {
-              evt = EVT_KEY_FIRST(KEY_DOWN);
-            }
-          }
-        }
-      }
-      else
-      {
-        value = calcStickScroll( 3 );
-        direction = value & 0x80;
-        value &= 0x7F;
-        if ( value )
-        {
-          if ( repeater > value )
-          {
-            repeater = 0;
-            if ( evt == 0 )
-            {
-              if ( direction )
-              {
-                evt = EVT_KEY_FIRST(KEY_RIGHT);
-              }
-              else
-              {
-                evt = EVT_KEY_FIRST(KEY_LEFT);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  else {
-    StickScrollTimer = 0;          // Seconds
-  }
-  StickScrollAllowed = 1 ;
-  return evt;
-}
-#endif
-
-#if !defined(CPUARM)
-void checkBattery()
-{
-  static uint8_t counter = 0;
-#if defined(GUI) && !defined(COLORLCD)
-  // TODO not the right menu I think ...
-  if (menuHandlers[menuLevel] == menuRadioDiagAnalogs) {
-    g_vbat100mV = 0;
-    counter = 0;
-  }
-#endif
-  if (counter-- == 0) {
-    counter = 10;
-    int32_t instant_vbat = anaIn(TX_VOLTAGE);
-#if defined(CPUM2560)
-    instant_vbat = (instant_vbat*1112 + instant_vbat*g_eeGeneral.txVoltageCalibration + (BandGap<<2)) / (BandGap<<3);
-#else
-    instant_vbat = (instant_vbat*16 + instant_vbat*g_eeGeneral.txVoltageCalibration/8) / BandGap;
-#endif
-
-    static uint8_t  s_batCheck;
-    static uint16_t s_batSum;
-
-#if defined(VOICE)
-    s_batCheck += 8;
-#else
-    s_batCheck += 32;
-#endif
-
-    s_batSum += instant_vbat;
-
-    if (g_vbat100mV == 0) {
-      g_vbat100mV = instant_vbat;
-      s_batSum = 0;
-      s_batCheck = 0;
-    }
-#if defined(VOICE)
-    else if (!(s_batCheck & 0x3f)) {
-#else
-    else if (s_batCheck == 0) {
-#endif
-      g_vbat100mV = s_batSum / 8;
-      s_batSum = 0;
-#if defined(VOICE)
-      if (s_batCheck != 0) {
-        // no alarms
-      }
-      else
-#endif
-      if (IS_TXBATT_WARNING() && g_vbat100mV>50) {
-        AUDIO_TX_BATTERY_LOW();
-      }
-    }
-  }
-}
-#endif // #if !defined(CPUARM)
-
-
-#if !defined(SIMU) && !defined(CPUARM)
-
-volatile uint8_t g_tmr16KHz; //continuous timer 16ms (16MHz/1024/256) -- 8-bit counter overflow
-ISR(TIMER_16KHZ_VECT, ISR_NOBLOCK)
-{
-  g_tmr16KHz++; // gruvin: Not 16KHz. Overflows occur at 61.035Hz (1/256th of 15.625KHz)
-                // to give *16.384ms* intervals. Kind of matters for accuracy elsewhere. ;)
-                // g_tmr16KHz is used to software-construct a 16-bit timer
-                // from TIMER-0 (8-bit). See getTmr16KHz, below.
-}
-
-uint16_t getTmr16KHz()
-{
-  while(1){
-    uint8_t hb  = g_tmr16KHz;
-    uint8_t lb  = COUNTER_16KHZ;
-    if(hb-g_tmr16KHz==0) return (hb<<8)|lb;
-  }
-}
-
-#if defined(PCBSTD) && (defined(AUDIO) || defined(VOICE))
-// Clocks every 128 uS
-ISR(TIMER_AUDIO_VECT, ISR_NOBLOCK)
-{
-  cli();
-  PAUSE_AUDIO_INTERRUPT(); // stop reentrance
-  sei();
-
-#if defined(AUDIO)
-  AUDIO_DRIVER();
-#endif
-
-#if defined(VOICE)
-  VOICE_DRIVER();
-#endif
-
-  cli();
-  RESUME_AUDIO_INTERRUPT();
-  sei();
-}
-#endif
-
-// Clocks every 10ms
-ISR(TIMER_10MS_VECT, ISR_NOBLOCK)
-{
-  // without correction we are 0,16% too fast; that mean in one hour we are 5,76Sek too fast; we do not like that
-  static uint8_t accuracyWarble; // because 16M / 1024 / 100 = 156.25. we need to correct the fault; no start value needed
-
-#if defined(AUDIO)
-  AUDIO_HEARTBEAT();
-#endif
-
-#if defined(BUZZER)
-  BUZZER_HEARTBEAT();
-#endif
-
-#if defined(HAPTIC)
-  HAPTIC_HEARTBEAT();
-#endif
-
-  per10ms();
-
-  uint8_t bump = (!(++accuracyWarble & 0x03)) ? 157 : 156;
-  TIMER_10MS_COMPVAL += bump;
-}
-
-// Timer3 used for PPM_IN pulse width capture. Counter running at 16MHz / 8 = 2MHz
-// equating to one count every half millisecond. (2 counts = 1ms). Control channel
-// count delta values thus can range from about 1600 to 4400 counts (800us to 2200us),
-// corresponding to a PPM signal in the range 0.8ms to 2.2ms (1.5ms at center).
-// (The timer is free-running and is thus not reset to zero at each capture interval.)
-ISR(TIMER3_CAPT_vect) // G: High frequency noise can cause stack overflo with ISR_NOBLOCK
-{
-  uint16_t capture=ICR3;
-
-  // Prevent rentrance for this IRQ only
-  PAUSE_PPMIN_INTERRUPT();
-  sei(); // enable other interrupts
-
-  captureTrainerPulses(capture);
-
-  cli(); // disable other interrupts for stack pops before this function's RETI
-  RESUME_PPMIN_INTERRUPT();
-}
-#endif
-
-#if defined(DSM2_SERIAL) && !defined(CPUARM)
-FORCEINLINE void DSM2_USART_vect()
-{
-  UDR0 = *((uint16_t*)pulses2MHzRPtr); // transmit next byte
-
-  pulses2MHzRPtr += sizeof(uint16_t);
-
-  if (pulses2MHzRPtr == pulses2MHzWPtr) { // if reached end of DSM2 data buffer ...
-    UCSRB_N(TLM_USART) &= ~(1 << UDRIE_N(TLM_USART)); // disable UDRE interrupt
-  }
-}
-#endif
-
-#if !defined(SIMU) && !defined(CPUARM)
-
-#if defined(TELEMETRY_FRSKY)
-
-FORCEINLINE void FRSKY_USART_vect()
-{
-  if (frskyTxBufferCount > 0) {
-    UDR_N(TLM_USART) = frskyTxBuffer[--frskyTxBufferCount];
-  }
-  else {
-    UCSRB_N(TLM_USART) &= ~(1 << UDRIE_N(TLM_USART)); // disable UDRE interrupt
-  }
-}
-
-// USART0/1 Transmit Data Register Emtpy ISR
-ISR(USART_UDRE_vect_N(TLM_USART))
-{
-#if defined(TELEMETRY_FRSKY) && defined(DSM2_SERIAL)
-  if (IS_DSM2_PROTOCOL(g_model.protocol)) { // TODO not s_current_protocol?
-    DSM2_USART_vect();
-  }
-  else {
-    FRSKY_USART_vect();
-  }
-#elif defined(TELEMETRY_FRSKY)
-  FRSKY_USART_vect();
-#else
-  DSM2_USART_vect();
-#endif
-}
-#endif
-#endif
-
-#if defined(CPUARM)
-  #define INSTANT_TRIM_MARGIN 10 /* around 1% */
-#else
-  #define INSTANT_TRIM_MARGIN 15 /* around 1.5% */
-#endif
-
-void instantTrim()
-{
-#if defined(VIRTUAL_INPUTS)
-  int16_t  anas_0[NUM_INPUTS];
+void instantTrim() {
+  int16_t anas_0[NUM_INPUTS];
   evalInputs(e_perout_mode_notrainer | e_perout_mode_nosticks);
   memcpy(anas_0, anas, sizeof(anas_0));
-#endif
 
   evalInputs(e_perout_mode_notrainer);
 
-  for (uint8_t stick=0; stick<NUM_STICKS; stick++) {
-    if (stick!=THR_STICK) {
+  for (uint8_t stick = 0; stick < NUM_STICKS; stick++) {
+    if (stick != THR_STICK) {
       // don't instant trim the throttle stick
       uint8_t trim_phase = getTrimFlightMode(mixerCurrentFlightMode, stick);
-#if defined(VIRTUAL_INPUTS)
       int16_t delta = 0;
-      for (int e=0; e<MAX_EXPOS; e++) {
-        ExpoData * ed = expoAddress(e);
-        if (!EXPO_VALID(ed)) break; // end of list
-        if (ed->srcRaw-MIXSRC_Rud == stick) {
+      for (int e = 0; e < MAX_EXPOS; e++) {
+        ExpoData *ed = expoAddress(e);
+        if (!EXPO_VALID(ed))
+          break;  // end of list
+        if (ed->srcRaw - MIXSRC_Rud == stick) {
           delta = anas[ed->chn] - anas_0[ed->chn];
           break;
         }
       }
-#else
-      int16_t delta = anas[stick];
-#endif
       if (abs(delta) >= INSTANT_TRIM_MARGIN) {
         int16_t trim = limit<int16_t>(TRIM_EXTENDED_MIN, (delta + trims[stick]) / 2, TRIM_EXTENDED_MAX);
         setTrimValue(trim_phase, stick, trim);
@@ -2340,12 +1495,11 @@ void instantTrim()
   AUDIO_WARNING2();
 }
 
-void copySticksToOffset(uint8_t ch)
-{
+void copySticksToOffset(uint8_t ch) {
   pauseMixerCalculations();
   int32_t zero = (int32_t)channelOutputs[ch];
 
-  evalFlightModeMixes(e_perout_mode_nosticks+e_perout_mode_notrainer, 0);
+  evalFlightModeMixes(e_perout_mode_nosticks + e_perout_mode_notrainer, 0);
   int32_t val = chans[ch];
   LimitData *ld = limitAddress(ch);
   limit_min_max_t lim = LIMIT_MIN(ld);
@@ -2353,80 +1507,83 @@ void copySticksToOffset(uint8_t ch)
     val = -val;
     lim = LIMIT_MIN(ld);
   }
-#if defined(CPUARM)
-  zero = (zero*256000 - val*lim) / (1024*256-val);
-#else
-  zero = (zero*25600 - val*lim) / (26214-val);
-#endif
+  zero = (zero * 256000 - val * lim) / (1024 * 256 - val);
   ld->offset = (ld->revert ? -zero : zero);
   resumeMixerCalculations();
   storageDirty(EE_MODEL);
 }
 
-void copyTrimsToOffset(uint8_t ch)
-{
+void copyTrimsToOffset(uint8_t ch) {
   int16_t zero;
 
   pauseMixerCalculations();
 
-  evalFlightModeMixes(e_perout_mode_noinput, 0); // do output loop - zero input sticks and trims
+  evalFlightModeMixes(e_perout_mode_noinput, 0);  // do output loop - zero input sticks and trims
   zero = applyLimits(ch, chans[ch]);
 
-  evalFlightModeMixes(e_perout_mode_noinput-e_perout_mode_notrims, 0); // do output loop - only trims
+  evalFlightModeMixes(e_perout_mode_noinput - e_perout_mode_notrims, 0);  // do output loop - only trims
 
   int16_t output = applyLimits(ch, chans[ch]) - zero;
   int16_t v = g_model.limitData[ch].offset;
-  if (g_model.limitData[ch].revert) output = -output;
-#if defined(CPUARM)
+  if (g_model.limitData[ch].revert)
+    output = -output;
   v += (output * 125) / 128;
-#else
-  v += output;
-#endif
-  g_model.limitData[ch].offset = limit((int16_t)-1000, (int16_t)v, (int16_t)1000); // make sure the offset doesn't go haywire
+  g_model.limitData[ch].offset = limit((int16_t)-1000, (int16_t)v, (int16_t)1000);  // make sure the offset doesn't go haywire
 
   resumeMixerCalculations();
   storageDirty(EE_MODEL);
 }
 
-void moveTrimsToOffsets() // copy state of 3 primary to subtrim
+void copyMinMaxToOutputs(uint8_t ch)
+{
+  LimitData *ld = limitAddress(ch);
+  int16_t min = ld->min;
+  int16_t max = ld->max;
+  int16_t center = ld->ppmCenter;
+
+  pauseMixerCalculations();
+
+  for (uint8_t chan = 0; chan < MAX_OUTPUT_CHANNELS; chan++) {
+    ld = limitAddress(chan);
+    ld->min = min;
+    ld->max = max;
+    ld->ppmCenter = center;
+  }
+
+  resumeMixerCalculations();
+  storageDirty(EE_MODEL);
+}
+
+void moveTrimsToOffsets()  // copy state of 3 primary to subtrim
 {
   int16_t zeros[MAX_OUTPUT_CHANNELS];
 
   pauseMixerCalculations();
 
-  evalFlightModeMixes(e_perout_mode_noinput, 0); // do output loop - zero input sticks and trims
-  for (uint8_t i=0; i<MAX_OUTPUT_CHANNELS; i++) {
+  evalFlightModeMixes(e_perout_mode_noinput, 0);  // do output loop - zero input sticks and trims
+  for (uint32_t i = 0; i < MAX_OUTPUT_CHANNELS; i++) {
     zeros[i] = applyLimits(i, chans[i]);
   }
 
-  evalFlightModeMixes(e_perout_mode_noinput-e_perout_mode_notrims, 0); // do output loop - only trims
+  evalFlightModeMixes(e_perout_mode_noinput - e_perout_mode_notrims, 0);  // do output loop - only trims
 
-  for (uint8_t i=0; i<MAX_OUTPUT_CHANNELS; i++) {
+  for (uint32_t i = 0; i < MAX_OUTPUT_CHANNELS; i++) {
     int16_t output = applyLimits(i, chans[i]) - zeros[i];
     int16_t v = g_model.limitData[i].offset;
-    if (g_model.limitData[i].revert) output = -output;
-#if defined(CPUARM)
+    if (g_model.limitData[i].revert)
+      output = -output;
     v += (output * 125) / 128;
-#else
-    v += output;
-#endif
-    g_model.limitData[i].offset = limit((int16_t)-1000, (int16_t)v, (int16_t)1000); // make sure the offset doesn't go haywire
+    g_model.limitData[i].offset = limit((int16_t)-1000, (int16_t)v, (int16_t)1000);  // make sure the offset doesn't go haywire
   }
 
   // reset all trims, except throttle (if throttle trim)
-  for (uint8_t i=0; i<NUM_TRIMS; i++) {
+  for (uint32_t i = 0; i < NUM_TRIMS; i++) {
     if (i != THR_STICK || !g_model.thrTrim) {
       int16_t original_trim = getTrimValue(mixerCurrentFlightMode, i);
-      for (uint8_t fm=0; fm<MAX_FLIGHT_MODES; fm++) {
-#if defined(CPUARM)
+      for (uint8_t fm = 0; fm < MAX_FLIGHT_MODES; fm++) {
         trim_t trim = getRawTrimValue(fm, i);
         if (trim.mode / 2 == fm)
           setTrimValue(fm, i, trim.value - original_trim);
-#else
-        trim_t trim = getRawTrimValue(fm, i);
-        if (trim <= TRIM_EXTENDED_MAX)
-          setTrimValue(fm, i, trim - original_trim);
-#endif
       }
     }
   }
@@ -2438,68 +1595,41 @@ void moveTrimsToOffsets() // copy state of 3 primary to subtrim
 }
 
 #if defined(ROTARY_ENCODERS)
-  volatile rotenc_t rotencValue[ROTARY_ENCODERS] = {0};
+volatile rotenc_t rotencValue[ROTARY_ENCODERS] = {0};
 #elif defined(ROTARY_ENCODER_NAVIGATION)
-  volatile rotenc_t rotencValue[1] = {0};
+volatile rotenc_t rotencValue[1] = {0};
 #endif
 
-#if defined(CPUARM) && defined(ROTARY_ENCODER_NAVIGATION)
+#if defined(ROTARY_ENCODER_NAVIGATION)
 uint8_t rotencSpeed;
 #endif
 
-#if !defined(CPUARM) && !defined(SIMU)
-extern unsigned char __bss_end ;
-#define STACKPTR     _SFR_IO16(0x3D)
-void stackPaint()
-{
-  // Init Stack while interrupts are disabled
-  unsigned char *p ;
-  unsigned char *q ;
-
-  p = (unsigned char *) STACKPTR ;
-  q = &__bss_end ;
-  p -= 2 ;
-  while ( p > q ) {
-    *p-- = 0x55 ;
-  }
-}
-
-uint16_t stackAvailable()
-{
-  unsigned char *p ;
-
-  p = &__bss_end + 1 ;
-  while ( *p++ == 0x55 );
-  return p - &__bss_end ;
-}
-#endif
-
-#if defined(CPUM2560)
-  #define OPENTX_INIT_ARGS const uint8_t mcusr
-#elif defined(PCBSTD)
-  #define OPENTX_INIT_ARGS const uint8_t mcusr
-#else
-  #define OPENTX_INIT_ARGS
-#endif
-
-void opentxInit(OPENTX_INIT_ARGS)
+void opentxInit()
 {
   TRACE("opentxInit");
 
 #if defined(GUI)
   menuHandlers[0] = menuMainView;
-  #if MENUS_LOCK != 2/*no menus*/
-    menuHandlers[1] = menuModelSelect;
-  #endif
+#if MENUS_LOCK != 2 /*no menus*/
+  menuHandlers[1] = menuModelSelect;
+#endif
 #endif
 
 #if defined(RTCLOCK) && !defined(COPROCESSOR)
-  rtcInit(); // RTC must be initialized before rambackupRestore() is called
+  rtcInit();  // RTC must be initialized before rambackupRestore() is called
 #endif
 
 #if defined(EEPROM)
   storageReadRadioSettings();
 #endif
+
+#if defined(GUI)
+  lcdSetContrast();
+#endif
+
+  currentBacklightBright = requiredBacklightBright = g_eeGeneral.backlightBright;
+  BACKLIGHT_ENABLE(); // we start the backlight during the startup animation
+
 
   // Radios handle UNEXPECTED_SHUTDOWN() differently:
   //  * radios with WDT and EEPROM and CPU controlled power use Reset status register
@@ -2509,15 +1639,18 @@ void opentxInit(OPENTX_INIT_ARGS)
   //  * radios without CPU controlled power can only use Reset status register (if available)
   if (UNEXPECTED_SHUTDOWN()) {
     TRACE("Unexpected Shutdown detected");
-    unexpectedShutdown = 1;
+    globalData.unexpectedShutdown = 1;
   }
 
-#if defined(SDCARD) && !defined(PCBMEGA2560)
+#if defined(SDCARD)
   // SDCARD related stuff, only done if not unexpectedShutdown
-  if (!unexpectedShutdown) {
+  if (!globalData.unexpectedShutdown) {
     sdInit();
     logsInit();
   }
+#endif
+#if defined(USB_LOGS)
+  usbLogsInit();
 #endif
 
 #if defined(EEPROM)
@@ -2525,7 +1658,7 @@ void opentxInit(OPENTX_INIT_ARGS)
 #endif
 
 #if defined(PCBHORUS)
-  if (!unexpectedShutdown) {
+  if (!globalData.unexpectedShutdown) {
     // g_model.topbarData is still zero here (because it was not yet read from SDCARD),
     // but we only remember the pointer to in in constructor.
     // The storageReadAll() needs topbar object, so it must be created here
@@ -2549,12 +1682,11 @@ void opentxInit(OPENTX_INIT_ARGS)
   // handling of storage for radios that have no EEPROM
 #if !defined(EEPROM)
 #if defined(RAMBACKUP)
-  if (unexpectedShutdown) {
+  if (globalData.unexpectedShutdown) {
     // SDCARD not available, try to restore last model from RAM
     TRACE("rambackupRestore");
     rambackupRestore();
-  }
-  else {
+  } else {
     storageReadAll();
   }
 #else
@@ -2562,41 +1694,30 @@ void opentxInit(OPENTX_INIT_ARGS)
 #endif
 #endif  // #if !defined(EEPROM)
 
-#if defined(SERIAL2)
-  serial2Init(g_eeGeneral.serial2Mode, modelTelemetryProtocol());
-#endif
-
-#if defined(PCBTARANIS)
-  BACKLIGHT_ENABLE();
+#if defined(AUX_SERIAL) && !defined(DEBUG)
+  auxSerialInit(g_eeGeneral.auxSerialMode, modelTelemetryProtocol());
 #endif
 
 #if MENUS_LOCK == 1
   getMovedSwitch();
-  if (TRIMS_PRESSED() && g_eeGeneral.switchUnlockStates==switches_states) {
+  if (TRIMS_PRESSED() && g_eeGeneral.switchUnlockStates == switches_states) {
     readonly = false;
   }
 #endif
-
-#if defined(VOICE) && defined(CPUARM)
+#if defined(AUDIO)
   currentSpeakerVolume = requiredSpeakerVolume = g_eeGeneral.speakerVolume + VOLUME_LEVEL_DEF;
-  #if !defined(SOFTWARE_VOLUME)
-    setScaledVolume(currentSpeakerVolume);
-  #endif
+
+#if !defined(SOFTWARE_VOLUME)
+  setScaledVolume(currentSpeakerVolume);
 #endif
 
-#if defined(CPUARM)
   referenceSystemAudioFiles();
   audioQueue.start();
-  BACKLIGHT_ENABLE();
 #endif
 
-#if defined(PCBSKY9X)
-  // Set ADC gains here
-  setSticksGain(g_eeGeneral.sticksGain);
-#endif
-
-#if defined(PCBSKY9X) && defined(BLUETOOTH)
-  btInit();
+#if defined(DFPLAYER)
+  currentSpeakerVolume = requiredSpeakerVolume = g_eeGeneral.speakerVolume + VOLUME_LEVEL_DEF;
+  setScaledVolume(currentSpeakerVolume);
 #endif
 
 #if defined(PCBHORUS)
@@ -2606,120 +1727,53 @@ void opentxInit(OPENTX_INIT_ARGS)
 
   if (g_eeGeneral.backlightMode != e_backlight_mode_off) {
     // on Tx start turn the light on
-    backlightOn();
+    resetBacklightTimeout();
   }
 
-#if NUM_PWMANALOGS > 0
-  analogPwmCheck();
-#endif
-
-  if (!unexpectedShutdown) {
+  if (!globalData.unexpectedShutdown) {
     opentxStart();
   }
 
-#if defined(CPUARM) || defined(CPUM2560)
-	// TODO Horus does not need this
   if (!g_eeGeneral.unexpectedShutdown) {
     g_eeGeneral.unexpectedShutdown = 1;
     storageDirty(EE_GENERAL);
   }
-#endif
 
-#if defined(GUI)
-  lcdSetContrast();
-#endif
-  backlightOn();
-
-#if defined(PCBSKY9X) && !defined(SIMU)
-  init_trainer_capture();
-#endif
-
-#if !defined(CPUARM)
-  doMixerCalculations();
-#endif
+  resetBacklightTimeout();
 
   startPulses();
 
-  wdt_enable(WDTO_500MS);
+  WDG_ENABLE(WDG_DURATION);
 }
 
 #if defined(SIMU)
-void * simuMain(void *)
+void simuMain()
 #else
 int main()
 #endif
 {
   // G: The WDT remains active after a WDT reset -- at maximum clock speed. So it's
   // important to disable it before commencing with system initialisation (or
-  // we could put a bunch more wdt_reset()s in. But I don't like that approach
+  // we could put a bunch more WDG_RESET()s in. But I don't like that approach
   // during boot up.)
-#if defined(CPUM2560) || defined(CPUM2561)
-  uint8_t mcusr = MCUSR; // save the WDT (etc) flags
-  MCUSR = 0; // must be zeroed before disabling the WDT
-  MCUCR = 0x80 ;   // Disable JTAG port that can interfere with POT3
-  MCUCR = 0x80 ;   // Must be done twice
-#elif defined(PCBSTD)
-  uint8_t mcusr = MCUCSR;
-  MCUCSR = 0x80 ;   // Disable JTAG port that can interfere with POT3
-  MCUCSR = 0x80 ;   // Must be done twice
-#endif
 #if defined(PCBTARANIS)
   g_eeGeneral.contrast = LCD_CONTRAST_DEFAULT;
 #endif
-  wdt_disable();
 
   boardInit();
 
 #if defined(PCBX7)
-  bluetoothInit(BLUETOOTH_DEFAULT_BAUDRATE);   //BT is turn on for a brief period to differentiate X7 and X7S
+  bluetoothInit(BLUETOOTH_DEFAULT_BAUDRATE);  //BT is turn on for a brief period to differentiate X7 and X7S
 #endif
 
-#if defined(GUI) && !defined(PCBTARANIS) && !defined(PCBHORUS)
-  // TODO remove this
-  lcdInit();
-#endif
-
-#if !defined(SIMU)
-  stackPaint();
-#endif
-
-#if defined(GUI) && !defined(PCBTARANIS)
-  // lcdSetRefVolt(25);
+#if defined(PCBHORUS)
+  loadFonts();
 #endif
 
 #if defined(SPLASH) && (defined(PCBTARANIS) || defined(PCBHORUS))
   drawSplash();
 #endif
 
-  sei(); // interrupts needed now
-
-#if !defined(CPUARM) && defined(TELEMETRY_FRSKY) && !defined(DSM2_SERIAL)
-  telemetryInit();
-#endif
-
-#if defined(DSM2_SERIAL) && !defined(TELEMETRY_FRSKY)
-  DSM2_Init();
-#endif
-
-#if defined(TELEMETRY_JETI)
-  JETI_Init();
-#endif
-
-#if defined(TELEMETRY_ARDUPILOT)
-  ARDUPILOT_Init();
-#endif
-
-#if defined(TELEMETRY_NMEA)
-  NMEA_Init();
-#endif
-
-#if defined(TELEMETRY_MAVLINK)
-  MAVLINK_Init();
-#endif
-
-#if defined(MENU_ROTARY_SW)
-  init_rotary_sw();
-#endif
 
 #if defined(PCBHORUS)
   if (!IS_FIRMWARE_COMPATIBLE_WITH_BOARD()) {
@@ -2733,64 +1787,23 @@ int main()
   }
 #endif
 
-#if defined(CPUARM)
   tasksStart();
-#else
-  opentxInit(mcusr);
-#if defined(CPUM2560)
-  uint8_t shutdown_state = 0;
-#endif
-
-  while (1) {
-#if defined(CPUM2560)
-    if ((shutdown_state=pwrCheck()) > e_power_trainer)
-      break;
-#endif
-#if defined(SIMU)
-    sleep(5/*ms*/);
-    if (main_thread_running == 0)
-      return 0;
-#endif
-
-    perMain();
-
-    if (heartbeat == HEART_WDT_CHECK) {
-      wdt_reset();
-      heartbeat = 0;
-    }
-  }
-#endif
-
-#if defined(CPUM2560)
-  // Time to switch off
-  drawSleepBitmap();
-  opentxClose();
-  boardOff(); // Only turn power off if necessary
-  wdt_disable();  // this function is provided by AVR Libc
-  while(1); // never return from main() - there is no code to return back, if any delays occurs in physical power it does dead loop.
-#endif
-
-#if defined(SIMU)
-  return NULL;
-#endif
 }
 
-#if defined(PWR_BUTTON_PRESS)
+#if !defined(SIMU)
+#if defined(PWR_BUTTON_PRESS) || defined(PWR_BUTTON_EMULATED)
 uint32_t pwr_press_time = 0;
 
-uint32_t pwrPressedDuration()
-{
+uint32_t pwrPressedDuration() {
   if (pwr_press_time == 0) {
     return 0;
-  }
-  else {
+  } else {
     return get_tmr10ms() - pwr_press_time;
   }
 }
 
-uint32_t pwrCheck()
-{
-  const char * message = NULL;
+uint32_t pwrCheck() {
+  const char *message = nullptr;
 
   enum PwrCheckState {
     PWR_CHECK_ON,
@@ -2802,21 +1815,18 @@ uint32_t pwrCheck()
 
   if (pwr_check_state == PWR_CHECK_OFF) {
     return e_power_off;
-  }
-  else if (pwrPressed()) {
+  } else if (pwrPressed()) {
     if (TELEMETRY_STREAMING()) {
       message = STR_MODEL_STILL_POWERED;
     }
     if (pwr_check_state == PWR_CHECK_PAUSED) {
       // nothing
-    }
-    else if (pwr_press_time == 0) {
+    } else if (pwr_press_time == 0) {
       pwr_press_time = get_tmr10ms();
       if (message && !g_eeGeneral.disableRssiPoweroffAlarm) {
         audioEvent(AU_MODEL_STILL_POWERED);
       }
-    }
-    else {
+    } else {
       inactivity.counter = 0;
       if (g_eeGeneral.backlightMode != e_backlight_mode_off) {
         BACKLIGHT_ENABLE();
@@ -2827,6 +1837,10 @@ uint32_t pwrCheck()
 #else
         while ((TELEMETRY_STREAMING() && !g_eeGeneral.disableRssiPoweroffAlarm)) {
 #endif
+#if defined(PWR_BUTTON_SWITCH) && !defined(PWR_BUTTON_EMULATED)
+          pwr_check_state = PWR_CHECK_OFF;
+          return e_power_off;
+#else
           lcdRefreshWait();
           lcdClear();
 
@@ -2835,37 +1849,40 @@ uint32_t pwrCheck()
           event_t evt = getEvent(false);
           DISPLAY_WARNING(evt);
           lcdRefresh();
-          
+
           if (warningResult) {
             pwr_check_state = PWR_CHECK_OFF;
             return e_power_off;
-          }
-          else if (!warningText) {
+          } else if (!warningText) {
             // shutdown has been cancelled
             pwr_check_state = PWR_CHECK_PAUSED;
             return e_power_on;
           }
+#endif
         }
+#if defined(HAPTIC)
         haptic.play(15, 3, PLAY_NOW);
+#endif
         pwr_check_state = PWR_CHECK_OFF;
         return e_power_off;
-      }
-      else {
+      } else {
         drawShutdownAnimation(pwrPressedDuration(), message);
         return e_power_press;
       }
     }
-  }
-  else {
+  } else {
     pwr_check_state = PWR_CHECK_ON;
     pwr_press_time = 0;
   }
 
   return e_power_on;
 }
-#elif defined(CPUARM)
-uint32_t pwrCheck()
-{
+#elif defined(PWR_BUTTON_SWITCH) && !defined(PWR_BUTTON_EMULATED)
+uint32_t pwrCheck() {
+  return e_power_on;
+}
+#else
+uint32_t pwrCheck() {
 #if defined(SOFT_PWR_CTRL)
   if (pwrPressed()) {
     return e_power_on;
@@ -2887,11 +1904,10 @@ uint32_t pwrCheck()
       RAISE_ALERT(STR_MODEL, STR_MODEL_STILL_POWERED, STR_PRESS_ENTER_TO_CONFIRM, AU_MODEL_STILL_POWERED);
       while (TELEMETRY_STREAMING()) {
         resetForcePowerOffRequest();
-        CoTickDelay(10);
+        sleep_ms(20);
         if (pwrPressed()) {
           return e_power_on;
-        }
-        else if (readKeys() == (1 << KEY_ENTER)) {
+        } else if (readKeys() == (1 << KEY_ENTER)) {
           return e_power_off;
         }
       }
@@ -2900,4 +1916,55 @@ uint32_t pwrCheck()
 
   return e_power_off;
 }
+#endif  // defined(PWR_BUTTON_PRESS)
+#endif  // !defined(SIMU)
+
+void getMixSrcRange(const int source, int16_t & valMin, int16_t & valMax, LcdFlags * flags)
+{
+  if (source >= MIXSRC_FIRST_TRIM && source <= MIXSRC_LAST_TRIM) {
+    valMax = g_model.extendedTrims ? TRIM_EXTENDED_MAX : TRIM_MAX;
+    valMin = -valMax;
+  }
+#if defined(LUA_INPUTS)
+  else if (source >= MIXSRC_FIRST_LUA && source <= MIXSRC_LAST_LUA) {
+    valMax = 30000;
+    valMin = -valMax;
+  }
 #endif
+  else if (source < MIXSRC_FIRST_CH) {
+    valMax = 100;
+    valMin = -valMax;
+  }
+  else if (source <= MIXSRC_LAST_CH) {
+    valMax = g_model.extendedLimits ? LIMIT_EXT_PERCENT : 100;
+    valMin = -valMax;
+  }
+#if defined(GVARS)
+  else if (source >= MIXSRC_FIRST_GVAR && source <= MIXSRC_LAST_GVAR) {
+    valMax = min<int>(CFN_GVAR_CST_MAX, MODEL_GVAR_MAX(source-MIXSRC_FIRST_GVAR));
+    valMin = max<int>(CFN_GVAR_CST_MIN, MODEL_GVAR_MIN(source-MIXSRC_FIRST_GVAR));
+    if (flags && g_model.gvars[source-MIXSRC_FIRST_GVAR].prec)
+      *flags |= PREC1;
+  }
+#endif
+  else if (source == MIXSRC_TX_VOLTAGE) {
+    valMax =  255;
+    valMin = 0;
+    if (flags)
+      *flags |= PREC1;
+  }
+  else if (source == MIXSRC_TX_TIME) {
+    valMax =  23 * 60 + 59;
+    valMin = 0;
+  }
+  else if (source >= MIXSRC_FIRST_TIMER && source <= MIXSRC_LAST_TIMER) {
+    valMax =  9 * 60 * 60 - 1;
+    valMin = -valMax;
+    if (flags)
+      *flags |= TIMEHOUR;
+  }
+  else {
+    valMax = 30000;
+    valMin = -valMax;
+  }
+}

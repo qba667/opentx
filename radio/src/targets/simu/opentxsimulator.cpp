@@ -25,11 +25,7 @@
   #define MAX_LOGICAL_SWITCHES    NUM_CSW
 #endif
 
-#if defined(CPUARM)
   #define GET_SWITCH_BOOL(sw__)    getSwitch((sw__), 0);
-#else
-  #define GET_SWITCH_BOOL(sw__)    getSwitch(sw__);
-#endif
 
 #define OTXS_DBG    qDebug() << "(" << simuTimerMicros() << "us)"
 
@@ -56,7 +52,7 @@ void firmwareTraceCb(const char * text)
 
 OpenTxSimulator::OpenTxSimulator() :
   SimulatorInterface(),
-  m_timer10ms(NULL),
+  m_timer10ms(nullptr),
   m_resetOutputsData(true),
   m_stopRequested(false)
 {
@@ -66,7 +62,7 @@ OpenTxSimulator::OpenTxSimulator() :
 
 OpenTxSimulator::~OpenTxSimulator()
 {
-  traceCallback = NULL;
+  traceCallback = nullptr;
   tracebackDevices.clear();
 
   if (m_timer10ms)
@@ -90,7 +86,7 @@ QString OpenTxSimulator::name()
 bool OpenTxSimulator::isRunning()
 {
   QMutexLocker lckr(&m_mtxSimuMain);
-  return (bool)main_thread_running;
+  return simuIsRunning();
 }
 
 void OpenTxSimulator::init()
@@ -211,7 +207,6 @@ void OpenTxSimulator::setTrim(unsigned int idx, int value)
     i = modn12x3[4 * getStickMode() + idx];
   uint8_t phase = getTrimFlightMode(getFlightMode(), i);
 
-#ifdef CPUARM
   if (!setTrimValue(phase, i, value)) {
     QTimer *timer = new QTimer(this);
     timer->setSingleShot(true);
@@ -222,17 +217,14 @@ void OpenTxSimulator::setTrim(unsigned int idx, int value)
     });
     timer->start(350);
   }
-#else
-  setTrimValue(phase, i, value);
-#endif
 }
 
 void OpenTxSimulator::setTrainerInput(unsigned int inputNumber, int16_t value)
 {
-  static unsigned dim = DIM(ppmInput);
+  static unsigned dim = DIM(trainerInput);
   //setTrainerTimeout(100);
   if (inputNumber < dim)
-    ppmInput[inputNumber] = qMin(qMax((int16_t)-512, value), (int16_t)512);
+    trainerInput[inputNumber] = qMin(qMax((int16_t)-512, value), (int16_t)512);
 }
 
 void OpenTxSimulator::setInputValue(int type, uint8_t index, int16_t value)
@@ -280,10 +272,17 @@ void OpenTxSimulator::rotaryEncoderEvent(int steps)
 #else
   // TODO : this should probably be handled in the GUI
   int key;
+#if defined(PCBXLITE)
+  if (steps > 0)
+    key = KEY_DOWN;
+  else if (steps < 0)
+    key = KEY_UP;
+#else
   if (steps > 0)
     key = KEY_MINUS;
   else if (steps < 0)
     key = KEY_PLUS;
+#endif
   else
     // Should not happen but Clang complains that key is unset otherwise
     return;
@@ -305,7 +304,7 @@ void OpenTxSimulator::rotaryEncoderEvent(int steps)
 
 void OpenTxSimulator::setTrainerTimeout(uint16_t ms)
 {
-  ppmInputValidityTimer = ms;
+  trainerInputValidityTimer = ms;
 }
 
 void OpenTxSimulator::sendTelemetry(const QByteArray data)
@@ -473,18 +472,22 @@ void OpenTxSimulator::checkOutputsChanged()
 {
   static TxOutputs lastOutputs;
   static size_t chansDim = DIM(channelOutputs);
+  const static int16_t limit = 512 * 2;
   qint32 tmpVal;
   uint8_t i, idx;
-  uint8_t phase = getFlightMode();  // opentx.cpp
-  uint8_t mode = getStickMode();
+  const uint8_t phase = getFlightMode();  // opentx.cpp
+  const uint8_t mode = getStickMode();
 
   for (i=0; i < chansDim; i++) {
     if (lastOutputs.chans[i] != channelOutputs[i] || m_resetOutputsData) {
-      emit channelOutValueChange(i, channelOutputs[i]);
-      emit channelMixValueChange(i, ex_chans[i]);
+      emit channelOutValueChange(i, channelOutputs[i], (g_model.extendedLimits ? limit * LIMIT_EXT_PERCENT / 100 : limit));
       emit outputValueChange(OUTPUT_SRC_CHAN_OUT, i, channelOutputs[i]);
-      emit outputValueChange(OUTPUT_SRC_CHAN_MIX, i, ex_chans[i]);
       lastOutputs.chans[i] = channelOutputs[i];
+    }
+    if (lastOutputs.ex_chans[i] != ex_chans[i] || m_resetOutputsData) {
+      emit channelMixValueChange(i, ex_chans[i], limit * 2);
+      emit outputValueChange(OUTPUT_SRC_CHAN_MIX, i, ex_chans[i]);
+      lastOutputs.ex_chans[i] = ex_chans[i];
     }
   }
 
@@ -527,10 +530,8 @@ void OpenTxSimulator::checkOutputsChanged()
 #if defined(GVAR_VALUE) && defined(GVARS)
   gVarMode_t gvar;
   for (uint8_t gv=0; gv < MAX_GVARS; gv++) {
-#if !defined(PCBSTD)
     gvar.prec = g_model.gvars[gv].prec;
     gvar.unit = g_model.gvars[gv].unit;
-#endif
     for (uint8_t fm=0; fm < MAX_FLIGHT_MODES; fm++) {
       gvar.mode = fm;
       gvar.value = (int16_t)GVAR_VALUE(gv, getGVarFlightMode(fm, gv));
@@ -578,10 +579,8 @@ const int OpenTxSimulator::voltageToAdc(const int volts)
   int ret = 0;
 #if defined(PCBHORUS) || defined(PCBX7)
   ret = (float)volts * 16.2f;
-#elif defined(PCBTARANIS) || defined(PCBSKY9X)
+#elif defined(PCBTARANIS)
   ret = (float)volts * 13.3f;
-#elif defined(PCBGRUVIN9X)
-  ret = (float)volts * 1.63f;
 #else
   ret = (float)volts * 14.15f;
 #endif

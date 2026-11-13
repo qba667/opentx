@@ -70,9 +70,26 @@
 #define LEN_TRNCHN             "\003"
 #define TR_TRNCHN              "KN1KN2KN3KN4"
 
+#if defined(CLI) || defined(DEBUG)
+  #define SERIAL_MODE_OFF              "Debug\0     "
+#else
+  #define SERIAL_MODE_OFF              "OFF\0       "
+#endif
 
-#define LEN_UART3MODES         "\015"  /*13 decimal*/
-#define TR_UART3MODES          "Wyłącz\0      ""S-Port Kopia ""Telemetria\0  ""Trener SBUS\0 ""Debug\0        "
+#if defined(PCBI6X)
+#define LEN_AUX_SERIAL_MODES           "\013"
+#define TR_AUX_SERIAL_MODES            SERIAL_MODE_OFF "Kopia Telem""Trener SBUS"
+#else
+#define LEN_AUX_SERIAL_MODES   "\015"  /*13 decimal*/
+#if defined(CLI) || defined(DEBUG)
+#define TR_AUX_SERIAL_MODES    "Debug\0       ""Kopia Telem\0""Telemetria\0  ""Trener SBUS\0 ""LUA\0          "
+#else
+#define TR_AUX_SERIAL_MODES    "Wyłącz\0      ""Kopia Telem\0""Telemetria\0  ""Trener SBUS\0 ""LUA\0          "
+#endif
+#endif
+
+#define LEN_USB_SERIAL_MODES           "\013"
+#define TR_USB_SERIAL_MODES            SERIAL_MODE_OFF "Kopia Telem""Logs\0      "
 
 #define LEN_SWTYPES            "\006"
 #define TR_SWTYPES             "Brak\0 ""Chwil.""2POZ\0 ""3POZ\0"
@@ -95,14 +112,24 @@
 #define LEN_COUNTRYCODES       TR("\002", "\007")
 #define TR_COUNTRYCODES        TR("US""JP""EU", "Ameryka""Japonia""Europa\0")
 
-#define LEN_USBMODES           TR("\006", "\010")
-#define TR_USBMODES            TR("Ask\0  ""Joyst\0""SDCard""Serial", "Ask\0    ""Joystick""Storage\0""Serial\0 ")
+#define LEN_USBMODES                   TR("\006", "\010")
+#if !defined(USB_SERIAL)
+#define TR_USBMODES                    TR("Pytaj\0""Joyst\0""Dane\0 ", "Ask\0    ""Joystick""Storage\0")
+#elif !defined(USB_MSD)
+#define TR_USBMODES                    TR("Pytaj\0""Joyst\0""Serial", "Ask\0    ""Joystick""Serial\0 ")
+#else
+#define TR_USBMODES                    TR("Pytaj\0""Joyst\0""Dane\0 ""Serial", "Ask\0    ""Joystick""Storage\0""Serial\0 ")
+#endif
 
 #define LEN_TARANIS_PROTOCOLS  "\004"
-#define TR_TARANIS_PROTOCOLS   "OFF\0""PPM\0""XJT\0""DSM2""CRSF""MULT""R9M\0""SBUS"
+#if defined(PCBI6X)
+  #define TR_TARANIS_PROTOCOLS   "OFF\0""PPM\0""CRSF"
+#else
+  #define TR_TARANIS_PROTOCOLS   "OFF\0""PPM\0""XJT\0""DSM2""CRSF""MULT""R9M\0""SBUS"
+#endif
 
-#define LEN_TELEMETRY_PROTOCOLS "\017"
-#define TR_TELEMETRY_PROTOCOLS "FrSky S.PORT\0  ""FrSky D\0       ""FrSky D (cable)""TBS Crossfire\0 ""Spektrum\0      ""AFHDS2A IBUS\0  ""Multi Telemetry"
+#define LEN_TELEMETRY_PROTOCOLS        "\017"
+#define TR_TELEMETRY_PROTOCOLS         "FrSky S.PORT\0  ""FrSky D\0       ""FrSky D (Kabel)""TBS Crossfire\0 ""Spektrum\0      ""AFHDS2A IBUS\0  ""Multi Telemetry"
 
 #define LEN_XJT_PROTOCOLS      "\004"
 #define TR_XJT_PROTOCOLS       "OFF\0""D16\0""D8\0 ""LR12"
@@ -110,8 +137,11 @@
 #define LEN_DSM_PROTOCOLS      "\004"
 #define TR_DSM_PROTOCOLS       "LP45""DSM2""DSMX"
 
+#define LEN_I6X_PROTOCOLS      "\004"
+#define TR_I6X_PROTOCOLS       "WYŁ\0""FS2A"
+
 #define LEN_MULTI_PROTOCOLS    "\006"
-#define TR_MULTI_PROTOCOLS     "FlySky""Hubsan""FrSky\0""Hisky\0""V2x2\0 ""DSM\0  ""Devo\0 ""YD717\0""KN\0   ""SymaX\0""SLT\0  ""CX10\0 ""CG023\0""Bayang""ESky\0 ""MT99XX""MJXQ\0 ""Shenqi""FY326\0""SFHSS\0""J6 PRO""FQ777\0""Assan\0""Hontai""OLRS\0 ""FS 2A\0""Q2x2\0 ""Walk.\0""Q303\0 ""GW008\0""DM002\0""Cabell""Esky15""H8 3D\0"
+#define TR_MULTI_PROTOCOLS     "FlySky""Hubsan""FrSky\0""Hisky\0""V2x2\0 ""DSM\0 ""Devo\0 ""YD717\0""KN\0 ""SymaX\0""SLT\0 ""CX10\0 ""CG023\0""Bayang""ESky\0 ""MT99XX""MJXq\0 ""Shenqi""FY326\0""SFHSS\0""J6 PRO""FQ777\0""Assan\0""Hontai""OpnLrs""FS 2A\0""Q2x2\0 ""Walk.\0""Q303\0 ""GW008\0""DM002\0""Cabell""Esy150""H8 3D\0""Corona""CFlie\0""Hitec\0""WFly\0 ""Bugs\0 ""BugMin""Traxas""NC1701""E01X\0 ""V911S\0""GD00X\0"
 
 #define TR_MULTI_CUSTOM        "Custom"
 
@@ -122,8 +152,13 @@
 #define LEN_VDISPLAYTRIMS      "\006"
 #define TR_VDISPLAYTRIMS       "Nie\0  ""Zmień\0""Tak\0"
 
-#define LEN_VBEEPCOUNTDOWN     "\006"
-#define TR_VBEEPCOUNTDOWN      "Cichy Pik  \0DźwiękWibrac"
+#if defined(HAPTIC)
+  #define LEN_VBEEPCOUNTDOWN     "\006"
+  #define TR_VBEEPCOUNTDOWN      "Cichy ""Pik  \0""Dźwięk""Wibrac"
+#else
+  #define LEN_VBEEPCOUNTDOWN     "\005"
+  #define TR_VBEEPCOUNTDOWN      "Cichy""Pik\0 ""Głos\0"
+#endif
 
 #define LEN_VVARIOCENTER       "\006"
 #define TR_VVARIOCENTER        "Ton\0  ""Cicho "
@@ -139,10 +174,6 @@
   #define TR_RETA123           "KWGL1234LRLR"
 #elif defined(PCBTARANIS) || defined(REVX)
   #define TR_RETA123           "KWGL123LR"
-#elif defined(PCBSKY9X)
-    #define TR_RETA123         "KWGL123a"
-#elif defined(CPUM2560)
-    #define TR_RETA123         "KWGL123ab"
 #else
   #define TR_RETA123           "KWGL123"
 #endif
@@ -159,8 +190,7 @@
 
 #if defined(DSM2)
   #define TR_DSM2              "LP45\0 ""DSM2\0 ""DSMX\0 "
-#elif defined(IRPROTOS)
-  #define TR_DSM2              "[LP45]""[DSM2]""[DSMX]"
+
 #else
   #define TR_DSM2
 #endif
@@ -171,21 +201,12 @@
   #define TR_IRPROTOS
 #endif
 
-#if defined(CPUARM)
   #define TR_XPPM
-#else
-  #define TR_XPPM              "PPM16\0""PPMsim"
-#endif
 
-#define TR_VPROTOS             "PPM\0  " TR_XPPM TR_PXX TR_DSM2 TR_IRPROTOS
+#define TR_VPROTOS             "PPM\0  " TR_DSM2
 
 #define LEN_POSNEG             "\003"
 #define TR_POSNEG              "POZ""NEG"
-
-#if defined(PCBSKY9X) && defined(REVX)
-  #define LEN_VOUTPUT_TYPE     "\011"
-  #define TR_VOUTPUT_TYPE      "OpenDrain""PushPull\0"
-#endif
 
 #define LEN_VCURVEFUNC         "\003"
 #define TR_VCURVEFUNC          "---""x>0""x<0""|x|""f>0""f<0""|f|"
@@ -212,27 +233,14 @@
 #else
   #define TR_CSWTIMER          "Tim\0 "
   #define TR_CSWSTICKY         "Stały"
-  #if defined(CPUARM)
     #define TR_CSWRANGE        "Zasię"
     #define TR_CSWSTAY         "Brzeg"
-  #else
-    #define TR_CSWRANGE
-    #define TR_CSWSTAY
-  #endif
 #endif
 
-#if defined(CPUARM)
   #define TR_CSWEQUAL          "a=x\0 "
-#else
-  #define TR_CSWEQUAL
-#endif
 
 #define LEN_VCSWFUNC           "\005"
-#if defined(CPUARM)
 #define TR_VCSWFUNC            "---\0 " TR_CSWEQUAL "a~x\0 ""a>x\0 ""a<x\0 " TR_CSWRANGE "|a|>x""|a|<x""AND\0 ""OR\0  ""XOR\0 " TR_CSWSTAY "a=b\0 ""a>b\0 ""a<b\0 ""Δ}x\0 ""|Δ|}x" TR_CSWTIMER TR_CSWSTICKY
-#else
-#define TR_VCSWFUNC            "---\0 " TR_CSWEQUAL "a~x\0 ""a>x\0 ""a<x\0 " TR_CSWRANGE "|a|>x""|a|<x""AND\0 ""OR\0  ""XOR\0 " TR_CSWSTAY "a=b\0 ""a>b\0 ""a<b\0 ""^}x\0 ""|^|}x" TR_CSWTIMER TR_CSWSTICKY
-#endif
 
 #define LEN_VFSWFUNC           "\012" /*10 decimal*/
 
@@ -242,7 +250,7 @@
   #define TR_VVARIO            "[Wario]\0  "
 #endif
 
-#if defined(AUDIO)
+#if defined(AUDIO) || defined(PCBI6X)
   #define TR_SOUND             "GrajDźwięk"
 #else
   #define TR_SOUND             "Pikanie\0  "
@@ -255,25 +263,28 @@
 #endif
 
 #if defined(VOICE)
-  #if defined(PCBSKY9X)
-    #define TR_PLAY_TRACK      "Ścieżka\0  "
-  #else
-    #define TR_PLAY_TRACK      "GrajŚcieżk"
-  #endif
-  #define TR_PLAY_BOTH         "Graj Oba\0 "
-  #define TR_PLAY_VALUE        TR("Graj Wart\0","GrajWartoś")
+  #define TR_PLAY_TRACK      "GrajŚcieżk"
+  #define TR_PLAY_BOTH         "Graj oba\0 "
+  #define TR_PLAY_VALUE        TR("Graj wart.","GrajWartoś")
 #else
-  #define TR_PLAY_TRACK        "[Graj Ści]"
-  #define TR_PLAY_BOTH         "[Graj Oba]"
-  #define TR_PLAY_VALUE        "[Graj War]"
+  #define TR_PLAY_BOTH         "[Graj oba]"
+#if defined(DFPLAYER)
+  #define TR_PLAY_TRACK        "GrajŚcieżk"
+  #define TR_PLAY_VALUE        "Graj wart."
+#else
+  #define TR_PLAY_TRACK        "[Graj ści]"
+  #define TR_PLAY_VALUE        "[Graj war]"
+#endif
 #endif
 
 #define TR_SF_BG_MUSIC        "Muz. tła\0 ""Muz.tła ||"
 
-#if defined(SDCARD)
+#if defined(USB_LOGS)
+  #define TR_SDCLOGS           "Logi USB\0 "
+#elif defined(SDCARD)
   #define TR_SDCLOGS           "Logi->SD\0 "
 #else
-  #define TR_SDCLOGS           "[Logować]\0"
+  #define TR_SDCLOGS           "[Logi USB]"
 #endif
 
 #if defined(GVARS)
@@ -308,15 +319,9 @@
   #define TR_SF_SCREENSHOT
 #endif
 
-#define TR_SF_RESERVE         "[rezerwa]\0"
+#define TR_SF_RESERVE         "[reserve]\0"
 
-#if defined(CPUARM)
-  #define TR_VFSWFUNC          TR_SF_SAFETY "Trener \0  ""Inst-Trim ""Resetuj\0  ""Ustaw\0    " TR_ADJUST_GVAR "Głośność\0 " "SetFailsfe" "RangeCheck" "ModuleBind" TR_SOUND TR_PLAY_TRACK TR_PLAY_VALUE TR_SF_RESERVE TR_SF_PLAY_SCRIPT TR_SF_RESERVE TR_SF_BG_MUSIC TR_VVARIO TR_HAPTIC TR_SDCLOGS "Podświetl\0" TR_SF_SCREENSHOT TR_SF_TEST
-#elif defined(PCBGRUVIN9X)
-  #define TR_VFSWFUNC          TR_SF_SAFETY "Trener \0  ""Inst-Trim ""Resetuj\0  " TR_ADJUST_GVAR TR_SOUND TR_PLAY_TRACK TR_PLAY_BOTH TR_PLAY_VALUE TR_VVARIO TR_HAPTIC TR_SDCLOGS "Podświetl\0" TR_SF_TEST
-#else
-  #define TR_VFSWFUNC          TR_SF_SAFETY "Trener \0  ""Inst-Trim ""Resetuj\0  " TR_ADJUST_GVAR TR_SOUND TR_PLAY_TRACK TR_PLAY_BOTH TR_PLAY_VALUE TR_VVARIO TR_HAPTIC "Podświetl\0" TR_SF_TEST
-#endif
+#define TR_VFSWFUNC          TR_SF_SAFETY "Trener \0  ""Inst-Trim ""Resetuj\0  ""Ustaw\0    " TR_ADJUST_GVAR "Głośność\0 " "SetFailsfe" "RangeCheck" "ModuleBind" TR_SOUND TR_PLAY_TRACK TR_PLAY_VALUE TR_SF_RESERVE TR_SF_PLAY_SCRIPT TR_SF_RESERVE /*TR_SF_BG_MUSIC*/ TR_VVARIO TR_HAPTIC "Podświetl\0" TR_SDCLOGS TR_SF_SCREENSHOT TR_SF_TEST
 
 #define LEN_VFSWRESET          TR("\004", "\011")  /*9 decimal*/
 
@@ -336,10 +341,8 @@
 
 #if LCD_W >= 212
   #define TR_FSW_RESET_TIMERS  "Timer 1\0 ""Timer 2\0 ""Timer 3\0 "
-#elif defined(CPUARM)
-  #define TR_FSW_RESET_TIMERS  "Tmr1""Tmr2""Tmr3"
 #else
-  #define TR_FSW_RESET_TIMERS  "Tmr1""Tmr2"
+  #define TR_FSW_RESET_TIMERS  "Tmr1""Tmr2""Tmr3"
 #endif
 
 #define TR_VFSWRESET           TR(TR_FSW_RESET_TIMERS "All\0" TR_FSW_RESET_TELEM TR_FSW_RESET_ROTENC, TR_FSW_RESET_TIMERS "All\0     " TR_FSW_RESET_TELEM TR_FSW_RESET_ROTENC)
@@ -349,21 +352,12 @@
 
 #define LEN_VTELEMCHNS         "\004"
 
-#if defined(CPUARM)
   #define TR_TELEM_RESERVE     TR("[--]", "[---]")
   #define TR_TELEM_TIME        TR("Time", "Time\0")
   #define TR_RAS               TR("SWR\0", "SWR\0 ")
   #define TR_RX_BATT           TR("[NA]", "[NA]\0")
   #define TR_A3_A4             TR("A3\0 ""A4\0 ", "A3\0  ""A4\0  ")
   #define TR_A3_A4_MIN         TR("A3-\0""A4-\0", "A3-\0 ""A4-\0 ")
-#else
-  #define TR_TELEM_RESERVE
-  #define TR_TELEM_TIME
-  #define TR_RAS
-  #define TR_RX_BATT
-  #define TR_A3_A4
-  #define TR_A3_A4_MIN
-#endif
 
 #define TR_ASPD_MAX            TR("ASp+", "ASpd+")
 
@@ -373,33 +367,17 @@
   #define TR_TELEM_RSSI_RX     TR("Rx\0  ", "Rx\0 ")
 #endif
 
-#if defined(CPUARM)
   #define TR_TELEM_TIMERS      TR("Tmr1""Tmr2""Tmr3", "Tmr1\0""Tmr2\0""Tmr3\0")
-#else
-  #define TR_TELEM_TIMERS      TR("Tmr1""Tmr2", "Tmr1\0""Tmr2\0")
-#endif
 
 #define LENGTH_UNIT_IMP        "ft\0"
 #define SPEED_UNIT_IMP         "mph"
 #define LENGTH_UNIT_METR       "m\0 "
 #define SPEED_UNIT_METR        "kmh"
 
-#if defined(CPUARM)
   #define LEN_VUNITSSYSTEM     TR("\006", "\010") /*8 decimal*/
   #define TR_VUNITSSYSTEM      TR("Metr. ""Imper.", "Metryczn""Imperial")
   #define LEN_VTELEMUNIT       "\003"
-  #define TR_VTELEMUNIT        "-\0 ""V\0 ""A\0 ""mA\0""kts""m/s""f/s""kmh""mph""m\0 ""ft\0""@C\0""@F\0""%\0 ""mAh""W\0 ""mW\0""dB\0""rpm""g\0 ""@\0 ""rad""ml\0""fOz"
-#else
-  #if defined(IMPERIAL_UNITS)
-    #define LENGTH_UNIT        LENGTH_UNIT_IMP
-    #define SPEED_UNIT         SPEED_UNIT_IMP
-  #else
-    #define LENGTH_UNIT        LENGTH_UNIT_METR
-    #define SPEED_UNIT         SPEED_UNIT_METR
-  #endif
-  #define LEN_VTELEMUNIT       "\003"
-  #define TR_VTELEMUNIT        "V\0 ""A\0 ""m/s""-\0 " SPEED_UNIT LENGTH_UNIT "@\0 ""%\0 ""mA\0""mAh""W\0 "
-#endif
+  #define TR_VTELEMUNIT                "-\0 ""V\0 ""A\0 ""mA\0""kts""m/s""f/s""kmh""mph""m\0 ""ft\0""@C\0""@F\0""%\0 ""mAh""W\0 ""mW\0""dB\0""rpm""g\0 ""@\0 ""rad""ml\0""fOz""Hz\0""dBm"
 
 #define STR_V                  (STR_VTELEMUNIT+1)
 #define STR_A                  (STR_VTELEMUNIT+4)
@@ -413,15 +391,10 @@
 #define LEN_VTELPROTO          "\007"
 #define TR_VTELPROTO           "None\0  ""Hub\0   ""WSHHigh"
 
-#if defined(CPUARM)
   #define LEN_AMPSRC           TR("\003", "\005")
   #define TR_AMPSRC            TR("---""A1\0""A2\0""A3\0""A4\0""FAS""Cel", "---\0 ""A1\0  ""A2\0  ""A3\0  ""A4\0  ""FAS\0 ""Cells")
   #define LEN_VOLTSRC          TR("\003", "\005")
   #define TR_VOLTSRC           TR("A1\0""A2\0""A3\0""A4\0""FAS""Cel", "A1\0  ""A2\0  ""A3\0  ""A4\0  ""FAS\0 ""Cells")
-#else
-  #define LEN_AMPSRC           TR("\003", "\005")
-  #define TR_AMPSRC            TR("---""A1\0""A2\0""FAS""Cel", "---\0 ""A1\0  ""A2\0  ""FAS\0 ""Cells")
-#endif
 
 #define LEN_VARIOSRC           "\004"
 #if defined(TELEMETRY_FRSKY_SPORT)
@@ -430,12 +403,12 @@
   #define TR_VARIOSRC          "Wys\0""Wys+""VSpd""A1\0 ""A2\0"
 #endif
 
-#if defined(CPUARM)
+#if defined(PCBI6X)
+  #define LEN_VTELEMSCREENTYPE     "\005"
+  #define TR_VTELEMSCREENTYPE      "Brak\0""Liczb""Paski"
+#else
   #define LEN_VTELEMSCREENTYPE "\006"
   #define TR_VTELEMSCREENTYPE  "Brak\0 ""Liczb\0""Paski\0""Skrypt"
-#else
-  #define LEN_VTELEMSCREENTYPE "\004"
-  #define TR_VTELEMSCREENTYPE    "Licz""Pask"
 #endif
 
 #define LEN_GPSFORMAT          "\004"
@@ -456,7 +429,7 @@
 #define TR_VSWASHTYPE          "---\0""120\0""120X""140\0""90\0"
 
 #define LEN_VKEYS              "\005"
-#define TR_VKEYS               TR("Menu\0""Exit\0""Dół \0""Góra\0""Prawo""Lewo\0", "Menu\0""Exit\0""Enter""Page\0""Plus\0""Minus")
+#define TR_VKEYS               "Menu\0""Exit\0""Dół \0""Góra\0""Prawo"
 
 #define LEN_VRENCODERS         "\003"
 #define TR_VRENCODERS          "REa""REb"
@@ -472,64 +445,50 @@
   #define TR_TRIMS_VSRCRAW     TR("TrSK""TrSW""TrGA""TrLO", "\313SK ""\313SW ""\313Gaz""\313Lot")
 #endif
 
-#if defined(PCBHORUS)
-  #define TR_POTS_VSRCRAW      "\310S1\0""\3106P\0""\310S2\0""\313L1\0""\313L2\0""\311LS\0""\311RS\0""\310JSx""\310JSy"
-  #define TR_SW_VSRCRAW        "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0""\312SG\0""\312SH\0"
+#if defined(PCBX12S)
+  #define TR_POTS_VSRCRAW              "\310S1\0""\3106P\0""\310S2\0""\313L1\0""\313L2\0""\311LS\0""\311RS\0""\310JSx""\310JSy"
+  #define TR_SW_VSRCRAW                "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0""\312SG\0""\312SH\0"
+#elif defined(PCBX10)
+  #define TR_POTS_VSRCRAW              "\310S1\0""\3106P\0""\310S2\0""\311LS\0""\311RS\0""None""None""\310EX1""\310EX2"
+  #define TR_SW_VSRCRAW                "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0""\312SG\0""\312SH\0"
 #elif defined(PCBX9E)
-  #define TR_POTS_VSRCRAW      "\310S1\0""\310S2\0""\310S3\0""\310S4\0""\311LS\0""\311RS\0""\311LS2""\311RS2"
-  #define TR_SW_VSRCRAW        "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0""\312SG\0""\312SH\0""\312SI\0""\312SJ\0""\312SK\0""\312SL\0""\312SM\0""\312SN\0""\312SO\0""\312SP\0""\312SQ\0""\312SR\0"
+  #define TR_POTS_VSRCRAW              "\310F1\0""\310F2\0""\310F3\0""\310F4\0""\311S1\0""\311S2\0""\311LS\0""\311RS\0"
+  #define TR_SW_VSRCRAW                "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0""\312SG\0""\312SH\0""\312SI\0""\312SJ\0""\312SK\0""\312SL\0""\312SM\0""\312SN\0""\312SO\0""\312SP\0""\312SQ\0""\312SR\0"
+#elif defined(PCBI6X)
+  #define TR_POTS_VSRCRAW              "\310VRA""\310VRB"
+  #define TR_SW_VSRCRAW                "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0"
 #elif defined(PCBX7)
-  #define TR_POTS_VSRCRAW      "\310S1\0""\310S2\0"
-  #define TR_SW_VSRCRAW        "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SF\0""\312SH\0"
+  #define TR_POTS_VSRCRAW              "\310S1\0""\310S2\0"
+  #define TR_SW_VSRCRAW                "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SF\0""\312SH\0"
 #elif defined(PCBTARANIS)
-  #define TR_POTS_VSRCRAW      "\310S1\0""\310S2\0""\310S3\0""\311LS\0""\311RS\0"
-  #define TR_SW_VSRCRAW        "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0""\312SG\0""\312SH\0"
-#elif defined(PCBSKY9X)
-  #define TR_POTS_VSRCRAW      "P1\0 ""P2\0 ""P3\0 "
-  #define TR_SW_VSRCRAW        "3POS" "THR\0""RUD\0""ELE\0""AIL\0""GEA\0""TRN\0"
-  #define TR_9X_3POS_SWITCHES  "ID0""ID1""ID2"
+  #define TR_POTS_VSRCRAW              "\310S1\0""\310S2\0""\310S3\0""\311LS\0""\311RS\0"
+  #define TR_SW_VSRCRAW                "\312SA\0""\312SB\0""\312SC\0""\312SD\0""\312SE\0""\312SF\0""\312SG\0""\312SH\0"
 #else
-  #define TR_POTS_VSRCRAW      "P1\0 ""P2\0 ""P3\0 "
-  #define TR_SW_VSRCRAW        "3POS"
-  #define TR_9X_3POS_SWITCHES  "ID0""ID1""ID2"
+  #define TR_POTS_VSRCRAW              "P1\0 ""P2\0 ""P3\0 "
+  #define TR_SW_VSRCRAW                "3POS"
+  #define TR_9X_3POS_SWITCHES          "ID0""ID1""ID2"
 #endif
 
-#if defined(CPUARM)
   #define TR_LOGICALSW         "L01""L02""L03""L04""L05""L06""L07""L08""L09""L10""L11""L12""L13""L14""L15""L16""L17""L18""L19""L20""L21""L22""L23""L24""L25""L26""L27""L28""L29""L30""L31""L32"
-#else
-  #define TR_LOGICALSW         "L01""L02""L03""L04""L05""L06""L07""L08""L09""L10""L11""L12"
-#endif
 
 #if defined(PCBHORUS)
   #define TR_TRIMS_SWITCHES    "\313Rl""\313Rr""\313Ed""\313Eu""\313Td""\313Tu""\313Al""\313Ar""\3135d""\3135u""\3136d""\3136u"
-#elif defined(PCBXLITE)
-  #define TR_TRIMS_SWITCHES            "tRl""tRr""tEd""tEu"
 #else
   #define TR_TRIMS_SWITCHES    TR("tRl""tRr""tEd""tEu""tTd""tTu""tAl""tAr", "\313Rl""\313Rr""\313Ed""\313Eu""\313Td""\313Tu""\313Al""\313Ar")
 #endif
 
-#if defined(PCBSKY9X)
-  #define TR_ROTARY_ENCODERS   "REa\0"
-  #define TR_ROTENC_SWITCHES   "REa"
-#elif defined(PCBGRUVIN9X) || defined(PCBMEGA2560)
-  #define TR_ROTARY_ENCODERS   "REa\0""REb\0"
-  #define TR_ROTENC_SWITCHES   "REa""REb"
-#else
-  #define TR_ROTARY_ENCODERS
-  #define TR_ROTENC_SWITCHES
-#endif
+#define TR_ROTARY_ENCODERS
+#define TR_ROTENC_SWITCHES
 
-#if !defined(PCBTARANIS)
+#if !defined(PCBTARANIS) && !defined(PCBHORUS)  && !defined(PCBI6X)
   #define TR_2POS_SWITCHES     "GAZ""SK ""SW ""LOT""GEA""TRN"
 #endif
 
 #define TR_ON_ONE_SWITCHES     "ON\0""One"
 
-#if defined(PCBTARANIS) || defined(PCBHORUS)
+#if defined(PCBTARANIS) || defined(PCBHORUS) || defined(PCBI6X)
   // only special switches here
   #define TR_VSWITCHES         "---" TR_TRIMS_SWITCHES TR_ON_ONE_SWITCHES
-#elif defined(PCBSKY9X)
-  #define TR_VSWITCHES         "---" TR_9X_3POS_SWITCHES TR_2POS_SWITCHES TR_TRIMS_SWITCHES TR_ROTENC_SWITCHES TR_ON_ONE_SWITCHES
 #else
   #define TR_VSWITCHES         "---" TR_9X_3POS_SWITCHES TR_2POS_SWITCHES TR_TRIMS_SWITCHES TR_ROTENC_SWITCHES TR_LOGICALSW TR_ON_ONE_SWITCHES
 #endif
@@ -540,38 +499,25 @@
   #define TR_CYC_VSRCRAW       "[C1]""[C2]""[C3]"
 #endif
 
-#if defined(CPUARM)
   #define TR_RESERVE_VSRCRAW   "[--]"
   #define TR_EXTRA_VSRCRAW     "Batt""Time""GPS\0" TR_RESERVE_VSRCRAW TR_RESERVE_VSRCRAW TR_RESERVE_VSRCRAW TR_RESERVE_VSRCRAW "Tmr1""Tmr2""Tmr3"
-#else
-  #define TR_EXTRA_VSRCRAW
-  #define TR_VTELEMCHNS        "---\0""Bat\0" TR_TELEM_TIME TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_TIMERS TR_RAS "Tx\0 " TR_TELEM_RSSI_RX TR_RX_BATT "A1\0 ""A2\0 " TR_A3_A4 "Alt\0""Rpm\0""Fuel""T1\0 ""T2\0 ""Spd\0""Dist""GAlt""Cell""Cels""Vfas""Curr""Cnsp""Powr""AccX""AccY""AccZ""Hdg\0""VSpd""ASpd""dTE\0" TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE "A1-\0""A2-\0" TR_A3_A4_MIN "Alt-""Alt+""Rpm+""T1+\0""T2+\0""Spd+""Dst+" TR_ASPD_MAX "Cel-""Cls-""Vfs-""Cur+""Pwr+" TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE TR_TELEM_RESERVE "Acc\0""Time"
-#endif
 
 #define TR_VSRCRAW             "---\0" TR_STICKS_VSRCRAW TR_POTS_VSRCRAW TR_ROTARY_ENCODERS "MAX\0" TR_CYC_VSRCRAW TR_TRIMS_VSRCRAW TR_SW_VSRCRAW TR_EXTRA_VSRCRAW
 
 #define LEN_VTMRMODES          "\003"
 #define TR_VTMRMODES           "WYŁ""ABS""THs""TH%""THt"
 
-#define LEN_VTRAINERMODES              "\022" /*18 decimal*/
-#define TR_VTRAINER_MASTER_JACK        "Trener/Jack\0      "
-#define TR_VTRAINER_SLAVE_JACK         "Uczeń/Jack\0       "
-#define TR_VTRAINER_MASTER_SBUS_MODULE "Trener/SBUS Moduł "
-#define TR_VTRAINER_MASTER_CPPM_MODULE "Trener/CPPM Moduł "
-#define TR_VTRAINER_MASTER_BATTERY     "Trener/Serial\0    "
+#define LEN_VTRAINERMODES              "\015"
+#define TR_VTRAINER_MASTER_JACK        "Trener/Jack\0 "
+#define TR_VTRAINER_SLAVE_JACK         "Uczeń/Jack\0  "
+#define TR_VTRAINER_MASTER_SBUS_MODULE "Trener/SBUS M"
+#define TR_VTRAINER_MASTER_CPPM_MODULE "Trener/CPPM M"
+#define TR_VTRAINER_MASTER_BATTERY     "Trener/Serial"
 #define TR_VTRAINER_BLUETOOTH          TR("Master/BT\0        ""Slave/BT\0", "Master/Bluetooth\0 ""Slave/Bluetooth\0  ")
 
-#define LEN_VFAILSAFE          "\011" /*9 decimal*/
-#define TR_VFAILSAFE           "Brak   \0 ""Utrzymuj\0""Własne  \0""0 sygnału""Odbiornik"
+#define LEN_VFAILSAFE          "\010" /*8 decimal*/
+#define TR_VFAILSAFE           "Utrzymuj""Własne\0 "
 
-#if defined(TELEMETRY_MAVLINK)
-  #define LEN_MAVLINK_BAUDS    "\006"
-  #define TR_MAVLINK_BAUDS     "4800  ""9600  ""14400 ""19200 ""38400 ""57600 ""58798 ""76800"
-  #define LEN_MAVLINK_AC_MODES "\011" /*9 decimal*/
-  #define TR_MAVLINK_AC_MODES  "Stabiliz.""Akro     ""Alt Hold ""Auto     ""Sterowany""Loiter   ""RTL      ""Koło     ""Utrzymuj ""Ląduj    ""OF Loiter""Toy A    ""Toy M    ""BŁĘDNY   "
-  #define LEN_MAVLINK_AP_MODES "\015" /*13 decimal*/
-  #define TR_MAVLINK_AP_MODES  "Ręczny      ""Koło         ""Stabilizacja ""Trening      ""Fly by Wire A""Fly by Wire A""Auto         ""RTL          ""Loiter       ""Sterowany    ""Inicjalizacja""BŁĘDNY       "
-#endif
 
 #define LEN_VSENSORTYPES        "\012" /*10 decimal*/
 #define TR_VSENSORTYPES        "Użytkownik""Obliczone "
@@ -608,20 +554,24 @@
 
 #if defined(PCBTARANIS)
   #define TR_ENTER             "[ENTER]"
+#elif defined(PCBI6X)
+  #define TR_ENTER             "[OK]"
 #else
   #define TR_ENTER             "[MENU]"
 #endif
 
 #if defined(PCBHORUS)
   #define TR_EXIT              "[RTN]"
+#elif defined(PCBI6X)
+  #define TR_EXIT              "[CANCEL]"
 #else
   #define TR_EXIT              "[WYJŚ]"
 #endif
 
 #if defined(PCBTARANIS)
-  #define TR_POPUPS            TR_EXIT "\010" "\010" "\010" "\010" TR_ENTER
+  #define TR_POPUPS_ENTER_EXIT            TR_EXIT "\010" "\010" "\010" "\010" TR_ENTER
 #else
-  #define TR_POPUPS            TR_ENTER "\010" TR_EXIT
+  #define TR_POPUPS_ENTER_EXIT            TR_ENTER "\010" TR_EXIT
   #define OFS_EXIT             sizeof(TR_ENTER)
 #endif
 
@@ -633,35 +583,24 @@
 #define TR_LOADINGMODEL        "Załaduj model.."
 #define TR_NAME                "Nazwa"
 #define TR_MODELNAME           "Nazwa modelu"
-#define TR_PHASENAME           "Nazwa Fazy"
-#define TR_MIXNAME             "Nazwa Mix"
-#define TR_INPUTNAME           "Wpisz Nazw"
-#if defined(CPUARM)
-  #define TR_EXPONAME          "LiniaNazw"
-#else
-  #define TR_EXPONAME          "Nazwa Exp"
-#endif
-#define TR_BITMAP              "Obrazek    "
+#define TR_PHASENAME           "Nazwa fazy"
+#define TR_MIXNAME             "Nazwa mix"
+#define TR_INPUTNAME           "Nazwa"
+  #define TR_EXPONAME          "Nazwa"
+#define TR_BITMAP              "Obrazek"
 #define TR_TIMER               TR("Timer", "Timer ")
 #define TR_ELIMITS             TR("Limi+25%", "Kanał +/- 125% ")
-#define TR_ETRIMS              TR("E.Trym ", "Poszer Trymery")
-#define TR_TRIMINC             "Krok Trym"
-#define TR_DISPLAY_TRIMS       TR("Pok.Trym.","Pokaż Trymery")
+#define TR_ETRIMS              TR("E.trym ", "Poszer Trymery")
+#define TR_TRIMINC             "Krok trym"
+#define TR_DISPLAY_TRIMS       TR("Pok.trym.","Pokaż Trymery")
 #define TR_TTRACE              TR("Źród gaz", INDENT "Źródło gazu ")
 #define TR_TTRIM               TR("TryGaz", INDENT "TrymWolnObrotó")
 #define TR_BEEPCTR             TR("ŚrodBeep", "Pikn.Środka")
-#define TR_USE_GLOBAL_FUNCS    TR("Funk.Glb.","Użyj Funkcji Glb")
-#if defined(PCBSKY9X) && defined(REVX)
-  #define TR_OUTPUT_TYPE       INDENT "Wyjście"
-#endif
+#define TR_USE_GLOBAL_FUNCS    TR("Fun.globalne","Użyj Funkcji Glb")
 #define TR_PROTO               TR(INDENT "Proto", INDENT "Protokół")
-#if defined(CPUARM)
   #define TR_PPMFRAME          INDENT "Ramka PPM"
 #define TR_REFRESHRATE               TR(INDENT "Refresh", INDENT "Refresh rate")
 #define STR_WARN_BATTVOLTAGE           TR(INDENT "Output is VBAT: ", INDENT "Warning: output level is VBAT: ")
-#else
-  #define TR_PPMFRAME          INDENT "Ramka PPM"
-#endif
 #define TR_MS                  "ms"
 #define TR_SWITCH              "Przełą"
 #define TR_TRIMS               "Trymy"
@@ -678,16 +617,16 @@
 #define TR_ELEDIRECTION        TR("Ster Wysokośc","Dług. Kierunku cyklu")
 #define TR_AILDIRECTION        TR("Kierunek Lotk","Lateral cyc. direction")
 #define TR_COLDIRECTION        TR("PIT Direction","Coll. pitch direction")
-#define TR_MODE                INDENT "Tryb"
+#define TR_MODE                "Tryb"
 #define TR_SUBTYPE             INDENT "Subtype"
 #define TR_NOFREEEXPO          "BrakWoln.Expo!"
 #define TR_NOFREEMIXER         "BrakWoln.Mixów!"
-#define TR_SOURCE              INDENT "Źródło"
+#define TR_SOURCE               "Źródło"
 #define TR_WEIGHT              "Waga "
-#define TR_EXPO                TR("Expo", "Exponential")
+#define TR_EXPO                TR("Wykł", "Wykładnicza")
 #define TR_SIDE                "Strona"
 #define TR_DIFFERENTIAL        "Różnic"
-#define TR_OFFSET              INDENT"Ofset "
+#define TR_OFFSET              "Ofset"
 #define TR_TRIM                "Trym"
 #define TR_DREX                "DRex"
 #define DREX_CHBOX_OFFSET      30
@@ -704,27 +643,27 @@
 #define TR_CV                  "Kr"
 #define TR_GV                  TR("G", "ZG")
 #define TR_ACHANNEL            "A\004Kanał"
-#define TR_RANGE               INDENT "Zakres"
-#define TR_CENTER              INDENT "Środek"
+#define TR_RANGE               "Zakres"
+#define TR_CENTER              "Środek"
 #define TR_BAR                 "Pas"
-#define TR_ALARM               INDENT "Alarm"
-#define TR_USRDATA             TR("Dane Użytk.", "Dane użytkownika")
+#define TR_ALARM               "Alarm"
+#define TR_USRDATA             TR("Dane użytk.", "Dane użytkownika")
 #define TR_BLADES              " Łopaty śmigla"
-#define TR_SCREEN              "Ekran "
+#define TR_SCREEN              "Ekran"
 #define TR_SOUND_LABEL         "Dźwięk"
-#define TR_LENGTH              INDENT"Długość"
-#define TR_BEEP_LENGTH         INDENT "Dług. Beepa"
-#define TR_SPKRPITCH           INDENT"Dźwięk"
+#define TR_LENGTH              "Długość"
+#define TR_BEEP_LENGTH         "Dług. piku"
+#define TR_SPKRPITCH           "Wysokość"
 #define TR_HAPTIC_LABEL        "Wibracja"
-#define TR_HAPTICSTRENGTH      INDENT"Siła"
+#define TR_HAPTICSTRENGTH      "Siła"
 #define TR_CONTRAST            "Kontrast"
 #define TR_ALARMS_LABEL        "Alarmy"
-#define TR_BATTERY_RANGE       TR("PokażPasBat.", "Pokaż pasek bateri")
-#define TR_BATTERYWARNING      INDENT"Bateria rozładowana"
-#define TR_INACTIVITYALARM     INDENT"Alarm bezczynności"
-#define TR_MEMORYWARNING       INDENT"Pełna pamięć"
-#define TR_ALARMWARNING        INDENT"Wyłącz dźwięk"
-#define TR_RSSISHUTDOWNALARM   TR(INDENT "Rssi Shutdown", INDENT "Check Rssi on Shutdown")
+#define TR_BATTERY_RANGE       TR("Zakres bat.", "Zakres baterii")
+#define TR_BATTERYWARNING      "Bateria rozł."
+#define TR_INACTIVITYALARM     "Alarm bezczyn."
+#define TR_MEMORYWARNING       "Pełna pamięć"
+#define TR_ALARMWARNING        "Wyłącz dźwięk"
+#define TR_RSSISHUTDOWNALARM   TR("Rssi Shutdown", INDENT "Check Rssi on Shutdown")
 #define TR_MODEL_STILL_POWERED "Model still powered"
 #define TR_MODEL_SHUTDOWN              "Shutdown ?"
 #define TR_PRESS_ENTER_TO_CONFIRM      "Press enter to confirm"
@@ -735,25 +674,26 @@
 #define TR_MINUTEBEEP          TR(INDENT "Minuta", INDENT "PikCoMinutę")
 #define TR_BEEPCOUNTDOWN       INDENT "Odliczanie"
 #define TR_PERSISTENT          TR(INDENT "Dokł.", INDENT "Dokładny")
-#define TR_BACKLIGHT_LABEL     "Podświetl"
-#define TR_BLDELAY             INDENT"Czas trwania"
-#define TR_BLONBRIGHTNESS      INDENT"Jasnośc wł."
+#define TR_BACKLIGHT_LABEL     "Podświetlenie"
+#define TR_BLDELAY             "Czas"
+#define TR_BLONBRIGHTNESS      INDENT"Jasność wł."
 #define TR_BLOFFBRIGHTNESS     INDENT"Jasność wył."
 #define TR_BLCOLOR             INDENT "Color"
 #define TR_SPLASHSCREEN        "Logo ekranu"
-#define TR_THROTTLEWARNING     TR(IF_CPUARM(INDENT)"OstrzGaz", INDENT "OstrzeżenieGaz")
-#define TR_SWITCHWARNING       TR(IF_CPUARM(INDENT) "OstrzPrzeł", INDENT "PozycjaPrzeł")
-#define TR_POTWARNINGSTATE     TR(IF_CPUARM(INDENT) "Pot&Slid.", INDENT "Pots & sliders")
-#define TR_SLIDERWARNING       TR(IF_CPUARM(INDENT) "Slid. pos.", INDENT "Slider positions")
-#define TR_POTWARNING          TR(IF_CPUARM(INDENT) "Ostrz.Poten.", INDENT "PozycjaPotencj.")
+#define TR_THROTTLEWARNING     TR(INDENT"OstrzGaz", INDENT "OstrzeżenieGaz")
+#define TR_SWITCHWARNING       TR(INDENT "OstrzPrzeł", INDENT "PozycjaPrzeł")
+#define TR_POTWARNINGSTATE     TR(INDENT "Pot&Slid.", INDENT "Pots & sliders")
+#define TR_SLIDERWARNING       TR(INDENT "Slid. pos.", INDENT "Slider positions")
+#define TR_POTWARNING          TR(INDENT "Ostrz.Poten.", INDENT "PozycjaPotencj.")
 #define TR_TIMEZONE            TR("Strefa czasowa" ,"Strefa czasowa GPS")
 #define TR_ADJUST_RTC          TR("RegulujRTC", INDENT "RegulujRTC")
 #define TR_GPS                 "GPS"
-#define TR_RXCHANNELORD        TR("KolejnKan.RX", "Bazowa kolejność kanałów")
+#define TR_RXCHANNELORD        TR("Kolejn.kan.", "Bazowa kolejność kanałów")
 #define TR_STICKS              "Drążki"
-#define TR_POTS                "Pots"
+#define TR_STICK_DEADZONE      "Dead zone"
+#define TR_POTS                "Pokrętła"
 #define TR_SWITCHES            "Przełącz"
-#define TR_SWITCHES_DELAY      "Opóźn.Przeł."
+#define TR_SWITCHES_DELAY      "Opóźn.przeł."
 #define TR_SLAVE               "Uczeń"
 #define TR_MODESRC             " Tryb\006% Źródło"
 #define TR_MULTIPLIER          "Mnożnik"
@@ -770,35 +710,30 @@
   #define TR_MOVESTICKSPOTS    "Poruszaj drążkami/pot"
 #else
   #define TR_MENUTOSTART       CENTER "\010" TR_ENTER " KALIBRUJ"
-  #define TR_SETMIDPOINT       TR(CENTER "\002Cenruj drążki/potencj",CENTER "\010Ustaw drązki/potencj na środku")
-  #define TR_MOVESTICKSPOTS    "Poruszaj drążkami/pot"
+  #define TR_SETMIDPOINT       TR(CENTER "\002Cenruj drążki/pokręt.",CENTER "\010Ustaw drązki/potencj na środku")
+  #define TR_MOVESTICKSPOTS    "Poruszaj drążkami/pok"
 #endif
 #define TR_RXBATT              "Rx Batt:"
 #define TR_TXnRX               "Tx:\0Rx:"
 #define OFS_RX                 4
 #define TR_ACCEL               "Acc:"
-#define TR_NODATA              CENTER "BrakDAN"
+#define TR_NODATA              CENTER "Brak danych"
 #define TR_TOTTM1TM2THRTHP     "\037\146SES\036TM1\037\146TM2\036THR\037\146TH%"
 #define TR_TMR1LATMAXUS        "Tmr1Lat max\037\124us"
 #define STR_US                 (STR_TMR1LATMAXUS+13)
 #define TR_TMR1LATMINUS        "Tmr1Lat min\037\124us"
 #define TR_TMR1JITTERUS        "Tmr1 Jitter\037\124us"
 
-#if defined(CPUARM)
-  #define TR_TMIXMAXMS         "TmixMaks"
+  #define TR_TMIXMAXMS         "Tmix max"
   #define TR_FREESTACKMINB     "Wolny stos"
-#else
-  #define TR_TMIXMAXMS         "TmixMaks\037\124ms"
-  #define TR_FREESTACKMINB     "Wolny stos\037\124b"
-#endif
 
-#define TR_MENUTORESET         CENTER TR_ENTER " >> Reset"
+#define TR_MENUTORESET         CENTER TR_ENTER " Zresetuj"
 #define TR_PPM_TRAINER         "TR"
 #define TR_CH                  "KN"
 #define TR_MODEL               "MODEL"
-#define TR_FP                  "FL"
+#define TR_FM                  "FL"
 #define TR_MIX                 "MIX"
-#define TR_EEPROMLOWMEM        "Niska pamięć EEPROM"
+#define TR_EEPROMLOWMEM        "Mało pamięci EEPROM"
 #define TR_ALERT               "\006UWAGA"
 #define TR_PRESSANYKEYTOSKIP   "Wciśnij guzik->ignoruj"
 #define TR_THROTTLENOTIDLE     "Gaz nie na zerze"
@@ -818,23 +753,19 @@
 #define TR_MENU_RADIO_ANALOGS             TR("WE-ANA","WEJŚCIA ANALOG.")
 #define TR_MENUCALIBRATION     "KALIBRACJA"
 #if defined(COLORLCD)
-  #define TR_TRIMS2OFFSETS     "Trymery >> Subtrimy"
+  #define TR_TRIMS2OFFSETS     "Trymery => Subtrimy"
 #else
-  #define TR_TRIMS2OFFSETS     "\006Trims => Subtrims"
+  #define TR_TRIMS2OFFSETS     "\006Trymy => Podtrymy"
 #endif
+#define TR_CHANNELS2FAILSAFE    "Channels=>Failsafe"
 #define TR_MENUMODELSEL        TR("WYB.MODEL","WYBÓR MODELU")
-#define TR_MENUSETUP           TR("USTAW","USTAW MODELU")
+#define TR_MENUSETUP           TR("USTAWIENIA","USTAW MODELU")
 #define TR_MENUFLIGHTMODE     "FAZA LOTU"
 #define TR_MENUFLIGHTMODES    "FAZY LOTU"
 #define TR_MENUHELISETUP       "USTAW HELI"
 
-#if defined(CPUARM)
   #define TR_MENUINPUTS        "WEJŚCIA"
   #define TR_MENULIMITS        "WYJŚCIA"
-#else
-  #define TR_MENUINPUTS        "DRĄŻKI"
-  #define TR_MENULIMITS        "SERWA "
-#endif
 
 #define TR_MENUCURVES          "KRZYWE"
 #define TR_MENUCURVE           "KRZYWA"
@@ -853,13 +784,8 @@
 #define TR_MONITOR_CHANNELS4   "CHANNELS MONITOR 25/32"
 #define TR_MONITOR_OUTPUT_DESC "Outputs"
 #define TR_MONITOR_MIXER_DESC  "Mixers"
-#if defined(CPUARM)
   #define TR_RECEIVER_NUM      TR( INDENT "Nr RX",INDENT "Nr odbiornika")
   #define TR_RECEIVER          INDENT "Receiver"
-#else
-  #define TR_RECEIVER_NUM      "NumOdb"
-  #define TR_RECEIVER          INDENT "Receiver"
-#endif
 #define TR_MULTI_RFTUNE        TR(INDENT "Freq tune",INDENT "RF Freq. fine tune")
 #define TR_MULTI_TELEMETRY             "Telemetry"
 #define TR_MULTI_VIDFREQ       TR(INDENT "Vid. freq.", INDENT "Video frequency")
@@ -876,14 +802,11 @@
 #define TR_MODULE_NO_TELEMETRY         TR3( "No telmetry", "No MULTI_TELEMETRY", "No telemetry (enable MULTI_TELEMETRY)")
 #define TR_MODULE_WAITFORBIND          "Bind to load protocol"
 #define TR_MODULE_BINDING              "Binding"
+#define TR_REBIND                      "Rebinding required"
 #define TR_BINDING_CH1_8_TELEM_ON               "Ch1-8 Telem ON"
 #define TR_BINDING_CH1_8_TELEM_OFF               "Ch1-8 Telem OFF"
 #define TR_BINDING_CH9_16_TELEM_ON               "Ch9-16 Telem ON"
 #define TR_BINDING_CH9_16_TELEM_OFF               "Ch9-16 Telem OFF"
-#define TR_BINDING_25MW_CH1_8_TELEM_OFF   TR("25mW Ch1-8 Tel OFF", "25mW Ch1-8 Tel. OFF")
-#define TR_BINDING_25MW_CH1_8_TELEM_ON    TR("25mW Ch1-8 Tel ON", "25mW Ch1-8 Tel. ON")
-#define TR_BINDING_500MW_CH1_8_TELEM_OFF  TR("0.5W Ch1-8 Tel OFF", "500mW Ch1-8 Tel. OFF")
-#define TR_BINDING_500MW_CH9_16_TELEM_OFF TR("0.5W Ch9-16 Tel OFF", "500mW Ch9-16 Tel. OFF")
 #define TR_PROTOCOL_INVALID            TR("Prot. invalid", "Protocol invalid")
 #define TR_MODULE_STATUS                TR(INDENT "Status", INDENT "Module Status")
 #define TR_MODULE_SYNC                 TR(INDENT "Sync", INDENT "Module Sync")
@@ -891,21 +814,22 @@
 #define TR_SYNCMENU            "[Synch]"
 #define TR_LIMIT               INDENT "Limit"
 #define TR_MINRSSI             "Min Rssi"
-#define TR_LATITUDE            "Szer. geo."
-#define TR_LONGITUDE           "Dł.   geo."
+#define TR_LATITUDE            "Szer.geo."
+#define TR_LONGITUDE           "Dł.geo."
 #define TR_GPSCOORD            TR("Koord.GPS","Typ koordynat GPS")
 #define TR_VARIO               TR("Wario","Wariometr")
-#define TR_PITCH_AT_ZERO       INDENT "Ton przy Zerze"
-#define TR_PITCH_AT_MAX        INDENT "Ton przy Max"
-#define TR_REPEAT_AT_ZERO      INDENT "Powtórz przy Zerze"
+#define TR_PITCH_AT_ZERO       "Ton przy zerze"
+#define TR_PITCH_AT_MAX        "Ton przy max"
+#define TR_REPEAT_AT_ZERO      "Powt. na zerze"
 #define TR_POWEROFF            "\027Wyłączanie.."
 #define TR_SHUTDOWN            "Wyłączanie.."
 #define TR_SAVEMODEL           "Zapisz ustwienia modelu"
-#define TR_BATT_CALIB          "Kalib:Baterii"
+#define TR_BATT_CALIB          "Kalib. bat."
 #define TR_CURRENT_CALIB       " +=\006Kalibracja prądu"
 #define TR_VOLTAGE             TR (INDENT"Napięcie",INDENT"Źródło Napięcia")
 #define TR_CURRENT             TR (INDENT"Prąd",INDENT"Źródło Prądu")
 #define TR_SELECT_MODEL        "Wybór modelu"
+#define TR_SELECT_MODE         "Wybierz tryb"
 #define TR_CREATE_CATEGORY     "Create Category"
 #define TR_RENAME_CATEGORY     "Rename Category"
 #define TR_DELETE_CATEGORY     "Delete Category"
@@ -939,9 +863,9 @@
 #define TR_NO_FAILSAFE         "Brak Failsafe"
 #define TR_KEYSTUCK            "Blokada klucza"
 #define TR_INVERT_THR          TR("Odw.Gaz?","Odwróć gaz?")
-#define TR_SPEAKER_VOLUME      INDENT "Głośność"
+#define TR_SPEAKER_VOLUME      "Głośność"
 #define TR_LCD                 "LCD"
-#define TR_BRIGHTNESS          INDENT "Jasność"
+#define TR_BRIGHTNESS          "Jasność"
 #define TR_CPU_TEMP            "Temp. CPU\016>"
 #define TR_CPU_CURRENT         "Prąd"
 #define TR_CPU_MAH             "Zużycie"
@@ -975,11 +899,14 @@
 #define TR_SD_INFO             "Informacje"
 #define TR_SD_FORMAT           "Formatuj"
 #define TR_NA                  "[X]"
-#define TR_HARDWARE            "HARDWARE"
+#define TR_HARDWARE            "SPRZĘT"
 #define TR_FORMATTING          "Formatowanie.."
 #define TR_TEMP_CALIB          "Temp. kalibracji"
 #define TR_TIME                "Czas"
-#define TR_MAXBAUDRATE         "Max bauds"
+#define TR_MAXBAUDRATE         "Baudrate"
+#define TR_CRSF_ARMING_MODE            "Arm using"
+#define LEN_CRSF_ARMING_MODES          "\006"
+#define TR_CRSF_ARMING_MODES           TR_CH "5\0  " TR_SWITCH
 
 #define TR_BLUETOOTH            "Bluetooth"
 #define TR_BLUETOOTH_DISC       "Discover"
@@ -989,9 +916,11 @@
 #define TR_BLUETOOTH_PIN_CODE   TR(INDENT "PIN code", "PIN code")
 #define TR_BAUDRATE             "Prędkość BT"
 #define LEN_BLUETOOTH_MODES     "\011"
+#if defined(PCBX9E) && !defined(USEHORUSBT)
+#define TR_BLUETOOTH_MODES      "---\0     ""Enabled\0 "
+#else
 #define TR_BLUETOOTH_MODES      "---\0     ""Telemetry""Trainer\0"
-
-
+#endif
 #define TR_SD_INFO_TITLE       "SD INFO"
 #define TR_SD_TYPE             "Typ:"
 #define TR_SD_SPEED            "Prędkość:"
@@ -1002,22 +931,23 @@
 #define TR_GVARS               "Zmien.Glob."
 #define TR_GLOBAL_VAR          "Zmienna Globalna"
 #define TR_MENUGLOBALVARS      "ZMIENNE GLOBALNE"
-#define TR_OWN                 "Własność"
+#define TR_OWN                 " \043 "
 #define TR_DATE                "Data"
 #define TR_MONTHS              { "Jan", "Fev", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
 #define TR_ROTARY_ENCODER      "R.Encs"
 #define TR_CHANNELS_MONITOR    "MONITOR KANAŁÓW"
-#define TR_MIXERS_MONITOR      "MONITOR MIKSER"
+#define TR_MIXERS_MONITOR      "MONITOR MIKSERÓW"
 #define TR_PATH_TOO_LONG       "Ścieżka za długa"
 #define TR_VIEW_TEXT           "Pokaż tekst"
 #define TR_FLASH_BOOTLOADER    "Flash BootLoader"
 #define TR_FLASH_EXTERNAL_DEVICE "Sflashuj Moduł Zewnętrzny"
 #define TR_FLASH_INTERNAL_MODULE "Sflashuj Moduł Wewnętrzny"
+#define TR_FLASH_EXTERNAL_MODULE       "Flash external module"
 #define TR_FIRMWARE_UPDATE_ERROR TR("FW update Error","Firmware update error")
 #define TR_WRITING             "\032Zapis...  "
-#define TR_CONFIRM_FORMAT      "Zatwierdź Format?"
-#define TR_INTERNALRF          "Wewn.Moduł RF"
-#define TR_EXTERNALRF          "Zewn.Moduł RF"
+#define TR_CONFIRM_FORMAT      "Zatwierdź format?"
+#define TR_INTERNALRF          "Wewn. moduł"
+#define TR_EXTERNALRF          "Zewn. moduł"
 #define TR_FAILSAFE            TR(INDENT"Failsafe",INDENT"Tryb Failsafe")
 #define TR_FAILSAFESET         "USTAWIENIE FAILSAFE"
 #define TR_HOLD                "HOLD"
@@ -1025,9 +955,10 @@
 #define TR_MENUSENSOR          "CZUJNIK"
 #define TR_SENSOR              "SENSOR"
 #define TR_COUNTRYCODE         "Kod regionu"
-#define TR_USBMODE             "USB Mode"
+#define TR_USBMODE             "Tryb USB"
 #define TR_VOICELANG           "Język głosu"
 #define TR_UNITSSYSTEM         "Jednostki"
+#define TR_UNITS_PPM           "Jednostki PPM"
 #define TR_EDIT                "Edytuj"
 #define TR_INSERT_BEFORE       "Wstaw przed"
 #define TR_INSERT_AFTER        "Wstaw za"
@@ -1036,19 +967,19 @@
 #define TR_PASTE               "Wklej"
 #define TR_DELETE              "Kasuj"
 #define TR_INSERT              "Wstaw"
-#define TR_RESET_FLIGHT        "Zeruj lot"
-#define TR_RESET_TIMER1        "Zeruj Timer1"
-#define TR_RESET_TIMER2        "Zeruj Timer2"
-#define TR_RESET_TIMER3        "Zeruj Timer3"
+#define TR_RESET_FLIGHT        "Zeruj sesję"
+#define TR_RESET_TIMER1        "Zeruj timer1"
+#define TR_RESET_TIMER2        "Zeruj timer2"
+#define TR_RESET_TIMER3        "Zeruj timer3"
 #define TR_RESET_TELEMETRY     "Wyczyść telemetrię"
 #define TR_STATISTICS          "Statystyki"
 #define TR_ABOUT_US            "O nas"
-#define TR_USB_JOYSTICK        "USB Joystick (HID)"
-#define TR_USB_MASS_STORAGE    "USB Storage (SD)"
-#define TR_USB_SERIAL          "USB Serial (Debug)"
-#define TR_SETUP_SCREENS       "Setup screens"
-#define TR_MONITOR_SCREENS     "Monitors"
-#define TR_AND_SWITCH          "Przełącznik AND"
+#define TR_USB_JOYSTICK        "USB Joystick"
+#define TR_USB_MASS_STORAGE    "USB Dysk"
+#define TR_USB_SERIAL          "USB Serial"
+#define TR_SETUP_SCREENS       "Ustaw ekrany"
+#define TR_MONITOR_SCREENS     "Monitory"
+#define TR_AND_SWITCH          "Łącznik AND"
 #define TR_SF                  "FS"
 #define TR_GF                  "FG"
 #define TR_SPEAKER             INDENT"Głośnik"
@@ -1057,6 +988,10 @@
 #define TR_MODULE_BIND         TR("[BND]","[Bind]")
 #define TR_MODULE_RANGE        TR("[Zas]","Zasięg")
 #define TR_RESET_BTN           "[Reset]"
+#define TR_DEBUG                       "Debug"
+#define TR_KEYS_BTN                BUTTON(TR("SW","Switches"))
+#define TR_ANALOGS_BTN                 BUTTON(TR("Ana","Analogs"))
+#define TR_CALIB_BTN                   BUTTON("Kalibracja")
 #define TR_SET                 "[Set]"
 #define TR_TRAINER             "Port Trenera"
 #define TR_ANTENNAPROBLEM      CENTER "Problem z anteną TX"
@@ -1067,16 +1002,18 @@
 #define TR_VALUE               "Wartość"
 #define TR_TOPLCDTIMER         "Top LCD Timer"
 #define TR_UNIT                "Jedn"
-#define TR_TELEMETRY_NEWSENSOR INDENT "Dodaj nowy czujnik..."
+#define TR_TELEMETRY_NEWSENSOR "Dodaj nowy"
 #define TR_CHANNELRANGE        TR(INDENT "ZakrKn",INDENT "Zakres kanału")
 #define TR_ANTENNASELECTION    TR(INDENT "Antenna", INDENT "Antenna selection")
 #define TR_ANTENNACONFIRM1     "Really switch?"
 #define TR_ANTENNACONFIRM2     TR("Check antenna", "Make sure antenna is installed!")
-#define TR_LOWALARM            INDENT "Alarm niski"
-#define TR_CRITICALALARM       INDENT "Alarm krytyczny"
+#define TR_R9MFLEXWARN1                "Requires non"
+#define TR_R9MFLEXWARN2                "certified R9M firm."
+#define TR_LOWALARM            "Alarm niski"
+#define TR_CRITICALALARM       "Alarm krytyczny"
 #define TR_RSSIALARM_WARN             TR("RSSI","TELEMETRY RSSI")
-#define TR_NO_RSSIALARM                TR(INDENT "Alarms disabled", INDENT "Telemetry alarms disabled")
-#define TR_DISABLE_ALARM               TR(INDENT "Disable alarms", INDENT "Disable telemetry alarms")
+#define TR_NO_RSSIALARM                TR("Alarms disabled", INDENT "Telemetry alarms disabled")
+#define TR_DISABLE_ALARM               TR("Wyłącz alarmy", INDENT "Disable telemetry alarms")
 #define TR_ENABLE_POPUP        "Aktywuj Popup"
 #define TR_DISABLE_POPUP       "Wyłącz Popup"
 #define TR_POPUP               "Popup"
@@ -1093,60 +1030,36 @@
 #define TR_PTS                 "pkty"
 #define TR_SMOOTH              "Gładka"
 #define TR_COPY_STICKS_TO_OFS  TR("Cpy stick->subtrim", "Skopiuj Drążki Do Offsetu")
+#define TR_COPY_MIN_MAX_TO_OUTPUTS     TR("Cpy min/max to all",  "Copy min/max/center to all outputs")
 #define TR_COPY_TRIMS_TO_OFS   TR("Cpy trim->subtrim", "Skopiuj Trymery Do subtrymerów")
 #define TR_INCDEC              "Zwiększ/Zmnie"
 #define TR_GLOBALVAR           "Zm.Global."
 #define TR_MIXSOURCE           "Źródło Miks."
-#define TR_CONSTANT            "Stala   "
+#define TR_CONSTANT            "Stała"
 #define TR_PERSISTENT_MAH      TR(INDENT "Zap. mAh", INDENT "Zapisz mAh")
 #define TR_PREFLIGHT           "Lista Ostrzeżeń"
 #define TR_CHECKLIST           TR(INDENT "Czeklista",INDENT "Pokaż Listę Ostrzeżeń")
 #define TR_FAS_OFFSET          TR(INDENT "FAS Ofs", INDENT "FAS Offset")
-#define TR_UART3MODE           "Port szreg."
+#define TR_AUX_SERIAL_MODE           "Port szreg."
 #define TR_SCRIPT              "Skrypt"
 #define TR_INPUTS              "Wejścia"
 #define TR_OUTPUTS             "Wyjścia"
-#define TR_EEBACKUP            "\012[ENTER Długo] Backup EEPROMu"
-#define TR_FACTORYRESET        "\012[MENU Long]: Ustaw.Fabrycz"
-#define TR_CONFIRMRESET        "WYkasować wszytkie modele?    "
+#define TR_EEBACKUP            "Backup EEPROM"
+#define TR_FACTORYRESET        "Reset ustawień"
+#define TR_CONFIRMRESET        "Skasować wszystkie modele?"
 #define TR_TO_MANY_LUA_SCRIPTS "Za dużo skryptów Lua!"
 
-#if defined(TELEMETRY_MAVLINK)
-  #define TR_MAVLINK_RC_RSSI_SCALE_LABEL  "MaksRSSI"
-  #define TR_MAVLINK_PC_RSSI_EN_LABEL     "PC RSSI EN"
-  #define TR_MAVMENUSETUP_TITLE           "Ustaw.Mavlink"
-  #define TR_MAVLINK_BAUD_LABEL           "Baudrate"
-  #define TR_MAVLINK_INFOS                "INFO"
-  #define TR_MAVLINK_MODE                 "TRYB"
-  #define TR_MAVLINK_CUR_MODE             "Aktualy Tryb"
-  #define TR_MAVLINK_ARMED                "Aktywny"
-  #define TR_MAVLINK_BAT_MENU_TITLE       "BAT RSSI"
-  #define TR_MAVLINK_BATTERY_LABEL        "Status bateriOdbiorn."
-  #define TR_MAVLINK_RC_RSSI_LABEL        "RC RSSI"
-  #define TR_MAVLINK_PC_RSSI_LABEL        "PC RSSI"
-  #define TR_MAVLINK_NAV_MENU_TITLE       "NAV"
-  #define TR_MAVLINK_COURSE               "Kurs"
-  #define TR_MAVLINK_HEADING              "Kierunek"
-  #define TR_MAVLINK_BEARING              "Orientacja"
-  #define TR_MAVLINK_ALTITUDE             "Wysokość"
-  #define TR_MAVLINK_GPS                  "GPS"
-  #define TR_MAVLINK_NO_FIX               "NO Fix"
-  #define TR_MAVLINK_SAT                  "SAT"
-  #define TR_MAVLINK_HDOP                 "HDOP"
-  #define TR_MAVLINK_LAT                  "SZR"
-  #define TR_MAVLINK_LON                  "DLG"
-#endif
 
 // Horus and Taranis column headers
 #define TR_PHASES_HEADERS_NAME         "Nazwa"
 #define TR_PHASES_HEADERS_SW           "Przełą"
 #define TR_PHASES_HEADERS_RUD_TRIM     "Trymer SK"
 #define TR_PHASES_HEADERS_ELE_TRIM     "Trymer SW"
-#define TR_PHASES_HEADERS_THT_TRIM     "Trymer Gazu"
-#define TR_PHASES_HEADERS_AIL_TRIM     "Trymer Lotek"
+#define TR_PHASES_HEADERS_THT_TRIM     "Trymer gazu"
+#define TR_PHASES_HEADERS_AIL_TRIM     "Trymer lotek"
 #define TR_PHASES_HEADERS_CH5_TRIM     "Trymer 5"
 #define TR_PHASES_HEADERS_CH6_TRIM     "Trymer 6"
-#define TR_PHASES_HEADERS_FAD_IN       "Pojawian"
+#define TR_PHASES_HEADERS_FAD_IN       "Wzrost"
 #define TR_PHASES_HEADERS_FAD_OUT      "Zanik"
 
 #define TR_LIMITS_HEADERS_NAME         "Nazwa"
@@ -1161,75 +1074,26 @@
 #define TR_LSW_HEADERS_FUNCTION        "Funkcja"
 #define TR_LSW_HEADERS_V1              "V1"
 #define TR_LSW_HEADERS_V2              "V2"
-#define TR_LSW_HEADERS_ANDSW           "AND Przełą"
+#define TR_LSW_HEADERS_ANDSW           "AND przełą"
 #define TR_LSW_HEADERS_DURATION        "CzasTrwa"
 #define TR_LSW_HEADERS_DELAY           "Opóźn"
 
 #define TR_GVAR_HEADERS_NAME          "Name"
-#define TR_GVAR_HEADERS_FM0           "Value on FM0"
-#define TR_GVAR_HEADERS_FM1           "Value on FM1"
-#define TR_GVAR_HEADERS_FM2           "Value on FM2"
-#define TR_GVAR_HEADERS_FM3           "Value on FM3"
-#define TR_GVAR_HEADERS_FM4           "Value on FM4"
-#define TR_GVAR_HEADERS_FM5           "Value on FM5"
-#define TR_GVAR_HEADERS_FM6           "Value on FM6"
-#define TR_GVAR_HEADERS_FM7           "Value on FM7"
-#define TR_GVAR_HEADERS_FM8           "Value on FM8"
+#define TR_GVAR_HEADERS_FM0           "Wart. w FM0"
+#define TR_GVAR_HEADERS_FM1           "Wart. w FM1"
+#define TR_GVAR_HEADERS_FM2           "Wart. w FM2"
+#define TR_GVAR_HEADERS_FM3           "Wart. w FM3"
+#define TR_GVAR_HEADERS_FM4           "Wart. w FM4"
+#define TR_GVAR_HEADERS_FM5           "Wart. w FM5"
+#define TR_GVAR_HEADERS_FM6           "Wart. w FM6"
+#define TR_GVAR_HEADERS_FM7           "Wart. w FM7"
+#define TR_GVAR_HEADERS_FM8           "Wart. w FM8"
 
 // Horus footer descriptions
 #define TR_LSW_DESCRIPTIONS    { "Comparison type or function", "First variable", "Second variable or constant", "Second variable or constant", "Additional condition for line to be enabled", "Minimum ON duration of the logical switch", "Minimum TRUE duration for the switch to become ON" }
 
 // About screen
-#define TR_ABOUTUS             TR("   O   ", "  O  ")
-
-#define TR_ABOUT_OPENTX_1      TR("OpenTX\001is\001open\001source,\001non", "OpenTX is open source, non-")
-#define TR_ABOUT_OPENTX_2      TR("commercial,\001wo\001warranties.", "commercial and comes with no")
-#define TR_ABOUT_OPENTX_3      TR("It\001was\001developed\001for\001free.", "warranties. It was developed")
-#define TR_ABOUT_OPENTX_4      TR("Support through donations", "for free. Support through")
-#define TR_ABOUT_OPENTX_5      TR("is welcome!", "donations is welcome!")
-
-#define TR_ABOUT_BERTRAND_1    "Bertrand Songis"
-#define TR_ABOUT_BERTRAND_2    "OpenTX główny autor"
-#define TR_ABOUT_BERTRAND_3    "Companion współ-autor"
-
-#define TR_ABOUT_MIKE_1        "Mike Blandford"
-#define TR_ABOUT_MIKE_2        "Guru kodu i driwerów"
-#define TR_ABOUT_MIKE_3        TR("Arguably,\001one\001of\001the\001best", "Arguably, one of the best")
-#define TR_ABOUT_MIKE_4        "Inspirational"
-
-#define TR_ABOUT_ROMOLO_1      "Romolo Manfredini"
-#define TR_ABOUT_ROMOLO_2      "Companion współ-autor"
-#define TR_ABOUT_ROMOLO_3      ""
-
-#define TR_ABOUT_ANDRE_1       "Andre Bernet"
-#define TR_ABOUT_ANDRE_2       "Funkcjonalność, użytkowość,"
-#define TR_ABOUT_ANDRE_3       "debugging, documentacja"
-
-#define TR_ABOUT_ROB_1         "Rob Thomson"
-#define TR_ABOUT_ROB_2         "openrcforums webmaster"
-
-#define TR_ABOUT_KJELL_1       "Kjell Kernen"
-#define TR_ABOUT_KJELL_2       "www.open-tx.org main author"
-#define TR_ABOUT_KJELL_3       "OpenTX Recorder author"
-#define TR_ABOUT_KJELL_4       "Companion contributor"
-
-#define TR_ABOUT_MARTIN_1      "Martin Hotar"
-#define TR_ABOUT_MARTIN_2      "Projekty graficzne"
-
-#if defined(PCBTARANIS)
-  #define TR_ABOUT_HARDWARE_1  "FrSky"
-  #define TR_ABOUT_HARDWARE_2  "Proucent/projektant Hardware"
-  #define TR_ABOUT_HARDWARE_3  "Współautor firmware"
-#else
-  #define TR_ABOUT_HARDWARE_1  "Brent Nelson"
-  #define TR_ABOUT_HARDWARE_2  "Sky9x twórca/producent"
-  #define TR_ABOUT_HARDWARE_3  ""
-#endif
-
-#define TR_ABOUT_PARENTS_1     "Projekty macierzyste"
-#define TR_ABOUT_PARENTS_2     TR("Ersky9x (Mike Blandford)", "Ersky9x (Mike Blandford)")
-#define TR_ABOUT_PARENTS_3     "ER9X (Erez Raviv)"
-#define TR_ABOUT_PARENTS_4     "TH9X (Thomas Husterer)"
+#define TR_ABOUTUS             TR(" O nas ", "O nas")
 
 #define TR_CHR_SHORT           'k'
 #define TR_CHR_LONG            'd'
@@ -1237,42 +1101,42 @@
 #define TR_CHR_HOUR            'h'
 #define TR_CHR_INPUT           'I'   // Values between A-I will work
 
-#define TR_BEEP_VOLUME         "Głośn pikan"
-#define TR_WAV_VOLUME          "Głośn wav  "
-#define TR_BG_VOLUME           "Głośn tła"
+#define TR_BEEP_VOLUME         "Głośn.piku"
+#define TR_WAV_VOLUME          "Głośn.wav"
+#define TR_BG_VOLUME           "Głośn.tła"
 
 #define TR_TOP_BAR             "GórnPas"
 #define TR_ALTITUDE            INDENT "Wysokość"
 #define TR_SCALE               "Skala"
-#define TR_VIEW_CHANNELS       "Pokaż Kanały"
-#define TR_VIEW_NOTES          "Pokaż Notki"
-#define TR_MODEL_SELECT        "Model Select"
+#define TR_VIEW_CHANNELS       "Pokaż kanały"
+#define TR_VIEW_NOTES          "Pokaż notki"
+#define TR_MODEL_SELECT        "WybierzModel"
 #define TR_MODS_FORBIDDEN      "Modyfikacje zabronione!"
 #define TR_UNLOCKED            "Odblokowane"
 #define TR_ID                  "ID"
-#define TR_PRECISION           "Precyzja "
-#define TR_RATIO               "Współcz."
+#define TR_PRECISION           "Precyzja"
+#define TR_RATIO               "Skala"
 #define TR_FORMULA             "Formuła"
-#define TR_CELLINDEX           "Cell index"
+#define TR_CELLINDEX           "ID celi"
 #define TR_LOGS                "Logi"
-#define TR_OPTIONS             "Opcje  "
+#define TR_OPTIONS             "Opcje"
 
-#define TR_ALTSENSOR           "Alt sensor"
-#define TR_CELLSENSOR          "Cell sensor"
-#define TR_GPSSENSOR           "GPS sensor"
+#define TR_ALTSENSOR           "Sensor wys"
+#define TR_CELLSENSOR          "Sensor celi"
+#define TR_GPSSENSOR           "Sensor GPS"
 #define TR_CURRENTSENSOR       "Sensor"
-#define TR_AUTOOFFSET          "Auto Ofset"
+#define TR_AUTOOFFSET          "Auto ofset"
 #define TR_ONLYPOSITIVE        "Dodatni"
 #define TR_FILTER              "Filtr"
-#define TR_TELEMETRYFULL       "Wszyskie miejsca zajęte!"
+#define TR_TELEMETRYFULL       "Sloty zajęte!"
 #define TR_SERVOS_OK           "Servos OK"
 #define TR_SERVOS_KO           "Servos KO"
 //TODO: translation
 #define TR_INVERTED_SERIAL     INDENT "Invert"
-#define TR_IGNORE_INSTANCE     INDENT "Ignoruj przypadek"
-#define TR_DISCOVER_SENSORS    INDENT "Znajdź nowe czujniki"
-#define TR_STOP_DISCOVER_SENSORS INDENT "Szukanie STOP "
-#define TR_DELETE_ALL_SENSORS  INDENT "Usuń czujniki     "
+#define TR_IGNORE_INSTANCE     INDENT "Ign. inst"
+#define TR_DISCOVER_SENSORS    INDENT "Znajdź nowe"
+#define TR_STOP_DISCOVER_SENSORS INDENT "Szukanie stop"
+#define TR_DELETE_ALL_SENSORS  INDENT "Usuń czujniki"
 #define TR_CONFIRMDELETE       "Usunąć wszystkie?"
 #define TR_SELECT_WIDGET       "Select widget"
 #define TR_REMOVE_WIDGET       "Remove widget"
@@ -1287,24 +1151,25 @@
 #define TR_ADDMAINVIEW         "Add main view"
 #define TR_BACKGROUND_COLOR    "Background color"
 #define TR_MAIN_COLOR          "Main color"
+#define TR_TEXT_VIEWER         "Text Viewer"
 
-#define TR_MENU_INPUTS         "\314Wejści"
+#define TR_MENU_INPUTS         "\314Wejścia"
 #define TR_MENU_LUA            "\322SkryptyLUA"
 #define TR_MENU_STICKS         "\307Drążki"
-#define TR_MENU_POTS           "\310Pots"
+#define TR_MENU_POTS           "\310Pokr"
 #define TR_MENU_MAX            "\315MAX"
 #define TR_MENU_HELI           "\316Cyclic"
 #define TR_MENU_TRIMS          "\313Trymy"
 #define TR_MENU_SWITCHES       "\312Przełczn"
 #define TR_MENU_LOGICAL_SWITCHES "\312Przełączn.Logicz"
-#define TR_MENU_TRAINER        "\317Trener "
-#define TR_MENU_CHANNELS       "\320Kanały  "
-#define TR_MENU_GVARS          "\311ZmGlo"
-#define TR_MENU_TELEMETRY      "\321Telemetry"
+#define TR_MENU_TRAINER        "\317Trener"
+#define TR_MENU_CHANNELS       "\320Kanały"
+#define TR_MENU_GVARS          "\311ZmGlob"
+#define TR_MENU_TELEMETRY      "\321Telemetria"
 #define TR_MENU_DISPLAY        "DISPLAY"
-#define TR_MENU_OTHER          "Inny "
+#define TR_MENU_OTHER          "Inny"
 #define TR_MENU_INVERT         "Odwróć"
-#define TR_JITTER_FILTER       "ADC Filter"
+#define TR_JITTER_FILTER       "Filtr ADC"
 
 #define ZSTR_RSSI              "RSSI"
 #define ZSTR_RAS               "SWR"
@@ -1312,10 +1177,18 @@
 #define ZSTR_A2                "A2"
 #define ZSTR_A3                "A3"
 #define ZSTR_A4                "A4"
+#define ZSTR_VOLT              "Volt"
 #define ZSTR_BATT              "RxBt"
 #define ZSTR_ALT               "Alt"
+#define ZSTR_TEMP             "Temp"
 #define ZSTR_TEMP1             "Tmp1"
 #define ZSTR_TEMP2             "Tmp2"
+#define ZSTR_PRES                      "Pres"
+#define ZSTR_ODO1                      "Odo1"
+#define ZSTR_ODO2                      "Odo2"
+#define ZSTR_TXV                       "TX_V"
+#define ZSTR_DIST                      "Dist"
+#define ZSTR_ARM                       "Arm"
 #define ZSTR_RPM               "RPM"
 #define ZSTR_FUEL              "Fuel"
 #define ZSTR_VSPD              "VSpd"
@@ -1328,6 +1201,7 @@
 #define ZSTR_CURR              "Curr"
 #define ZSTR_CAPACITY          "Capa"
 #define ZSTR_VFAS              "VFAS"
+#define ZSTR_BATT_PERCENT      "Bat%"
 #define ZSTR_ASPD              "ASpd"
 #define ZSTR_GSPD              "GSpd"
 #define ZSTR_HDG               "Hdg"
@@ -1353,9 +1227,14 @@
 #define ZSTR_RX_NOISE          "RNse"
 #define ZSTR_ANTENNA           "ANT"
 #define ZSTR_RF_MODE           "RFMD"
-#define ZSTR_TX_POWER          "TPWR"
-#define ZSTR_TX_RSSI           "TRSS"
-#define ZSTR_TX_QUALITY        "TQly"
+#define ZSTR_TX_POWER                  "TPW2"
+#define ZSTR_TX_RSSI                   "TRSS"
+#define ZSTR_TX_QUALITY                "TQly"
+#define ZSTR_RX_RSSI_PERC              "RRSP"
+#define ZSTR_RX_RF_POWER               "RPWR"
+#define ZSTR_TX_RSSI_PERC              "TRSP"
+#define ZSTR_TX_RF_POWER               "TPWR"
+#define ZSTR_TX_FPS                    "TFPS"
 #define ZSTR_TX_SNR            "TSNR"
 #define ZSTR_TX_NOISE          "TNse"
 #define ZSTR_PITCH             "Ptch"
@@ -1385,3 +1264,9 @@
 #define ZSTR_GASSUIT_RPM       "GRPM"
 #define ZSTR_GASSUIT_FLOW      "GFlo"
 #define ZSTR_GASSUIT_CONS      "GFue"
+#define ZSTR_GASSUIT_RES_VOL   "GRVl"
+#define ZSTR_GASSUIT_RES_PERC  "GRPc"
+#define ZSTR_GASSUIT_MAX_FLOW  "GMFl"
+#define ZSTR_GASSUIT_AVG_FLOW  "GAFl"
+#define ZSTR_SBEC_VOLTAGE      "BecV"
+#define ZSTR_SBEC_CURRENT      "BecA"

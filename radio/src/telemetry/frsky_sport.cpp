@@ -69,11 +69,16 @@ const FrSkySportSensor sportSensors[] = {
   { ESC_RPM_CONS_FIRST_ID, ESC_RPM_CONS_LAST_ID, 0, ZSTR_ESC_RPM, UNIT_RPMS, 0 },
   { ESC_RPM_CONS_FIRST_ID, ESC_RPM_CONS_LAST_ID, 1, ZSTR_ESC_CONSUMPTION, UNIT_MAH, 0 },
   { ESC_TEMPERATURE_FIRST_ID, ESC_TEMPERATURE_LAST_ID, 0, ZSTR_ESC_TEMP, UNIT_CELSIUS, 0 },
-  { GASSUIT_TEMP_FIRST_ID, GASSUIT_TEMP_LAST_ID, 0, ZSTR_GASSUIT_TEMP1, UNIT_CELSIUS, 0 },
-  { GASSUIT_TEMP_FIRST_ID, GASSUIT_TEMP_LAST_ID, 1, ZSTR_GASSUIT_TEMP2, UNIT_CELSIUS, 0 },
+  { GASSUIT_TEMP1_FIRST_ID, GASSUIT_TEMP1_LAST_ID, 0, ZSTR_GASSUIT_TEMP1, UNIT_CELSIUS, 0 },
+  { GASSUIT_TEMP2_FIRST_ID, GASSUIT_TEMP2_LAST_ID, 0, ZSTR_GASSUIT_TEMP2, UNIT_CELSIUS, 0 },
   { GASSUIT_SPEED_FIRST_ID, GASSUIT_SPEED_LAST_ID, 0, ZSTR_GASSUIT_RPM, UNIT_RPMS, 0 },
-  { GASSUIT_FUEL_FIRST_ID, GASSUIT_FUEL_LAST_ID, 0, ZSTR_GASSUIT_FLOW, UNIT_MILLILITERS, 0 }, //TODO this needs to be changed to ml/min, but need eeprom conversion
-  { GASSUIT_FUEL_FIRST_ID, GASSUIT_FUEL_LAST_ID, 1, ZSTR_GASSUIT_CONS, UNIT_MILLILITERS, 0 },
+  { GASSUIT_RES_VOL_FIRST_ID, GASSUIT_RES_VOL_LAST_ID, 0, ZSTR_GASSUIT_RES_VOL, UNIT_MILLILITERS, 0 },
+  { GASSUIT_RES_PERC_FIRST_ID, GASSUIT_RES_PERC_LAST_ID, 0, ZSTR_GASSUIT_RES_PERC, UNIT_PERCENT, 0 },
+  { GASSUIT_FLOW_FIRST_ID, GASSUIT_FLOW_LAST_ID, 0, ZSTR_GASSUIT_FLOW, UNIT_MILLILITERS, 0 },             //TODO this needs to be changed to ml/min, but need eeprom conversion
+  { GASSUIT_MAX_FLOW_FIRST_ID, GASSUIT_MAX_FLOW_LAST_ID, 0, ZSTR_GASSUIT_MAX_FLOW, UNIT_MILLILITERS, 0 }, //TODO this needs to be changed to ml/min, but need eeprom conversion
+  { GASSUIT_AVG_FLOW_FIRST_ID, GASSUIT_AVG_FLOW_LAST_ID, 0, ZSTR_GASSUIT_AVG_FLOW, UNIT_MILLILITERS, 0 }, //TODO this needs to be changed to ml/min, but need eeprom conversion
+  { SBEC_POWER_FIRST_ID, SBEC_POWER_LAST_ID, 0, ZSTR_SBEC_VOLTAGE, UNIT_VOLTS, 2 },
+  { SBEC_POWER_FIRST_ID, SBEC_POWER_LAST_ID, 1, ZSTR_SBEC_CURRENT, UNIT_AMPS, 2 },
   { 0, 0, 0, NULL, UNIT_RAW, 0 } // sentinel
 };
 
@@ -122,14 +127,14 @@ void sportProcessTelemetryPacket(uint16_t id, uint8_t subId, uint8_t instance, u
     uint8_t cellsCount = (data & 0xF0) >> 4;
     uint8_t cellIndex = (data & 0x0F);
     uint32_t mask = (cellsCount << 24) + (cellIndex << 16);
-    setTelemetryValue(TELEM_PROTO_FRSKY_SPORT, id, subId, instance, mask + (((data & 0x000FFF00) >> 8) / 5), unit, precision);
+    setTelemetryValue(PROTOCOL_TELEMETRY_FRSKY_SPORT, id, subId, instance, mask + (((data & 0x000FFF00) >> 8) / 5), unit, precision);
     if (cellIndex+1 < cellsCount) {
       mask += (1 << 16);
-      setTelemetryValue(TELEM_PROTO_FRSKY_SPORT, id, subId, instance, mask + (((data & 0xFFF00000) >> 20) / 5), unit, precision);
+      setTelemetryValue(PROTOCOL_TELEMETRY_FRSKY_SPORT, id, subId, instance, mask + (((data & 0xFFF00000) >> 20) / 5), unit, precision);
     }
   }
   else {
-    setTelemetryValue(TELEM_PROTO_FRSKY_SPORT, id, subId, instance, data, unit, precision);
+    setTelemetryValue(PROTOCOL_TELEMETRY_FRSKY_SPORT, id, subId, instance, data, unit, precision);
   }
 }
 
@@ -148,7 +153,7 @@ void sportProcessTelemetryPacket(const uint8_t * packet)
 
   if (primId == DATA_FRAME) {
     uint8_t instance = physicalId + 1;
-    if (id == RSSI_ID) {
+    if (id == RSSI_ID && isValidIdAndInstance(RSSI_ID, instance)) {
       telemetryStreaming = TELEMETRY_TIMEOUT10ms; // reset counter only if valid packets are being detected
       data = SPORT_DATA_U8(packet);
       if (data == 0)
@@ -232,10 +237,9 @@ void sportProcessTelemetryPacket(const uint8_t * packet)
         else if (id >= ESC_TEMPERATURE_FIRST_ID && id <= ESC_TEMPERATURE_LAST_ID) {
           sportProcessTelemetryPacket(id, 0, instance, data & 0x00ff);
         }
-        else if (id >= GASSUIT_TEMP_FIRST_ID && id <= GASSUIT_FUEL_LAST_ID) {
-          // 2 GASSUIT sensors
-          sportProcessTelemetryPacket(id, 0, instance, data & 0xffff);
-          sportProcessTelemetryPacket(id, 1, instance, data >> 16);
+        else if (id >= SBEC_POWER_FIRST_ID && id <= SBEC_POWER_LAST_ID) {
+          sportProcessTelemetryPacket(id, 0, instance, (data & 0xffff) / 10);
+          sportProcessTelemetryPacket(id, 1, instance, (data >> 16) / 10);
         }
         else if (id >= DIY_STREAM_FIRST_ID && id <= DIY_STREAM_LAST_ID) {
 #if defined(LUA)
@@ -245,7 +249,7 @@ void sportProcessTelemetryPacket(const uint8_t * packet)
             luaPacket.primId = primId;
             luaPacket.dataId = id;
             luaPacket.value = data;
-            for (uint8_t i=0; i<sizeof(SportTelemetryPacket); i++) {
+            for (uint32_t i=0; i<sizeof(SportTelemetryPacket); i++) {
               luaInputTelemetryFifo->push(luaPacket.raw[i]);
             }
           }
@@ -265,7 +269,7 @@ void sportProcessTelemetryPacket(const uint8_t * packet)
       luaPacket.primId = primId;
       luaPacket.dataId = id;
       luaPacket.value = data;
-      for (uint8_t i=0; i<sizeof(SportTelemetryPacket); i++) {
+      for (uint32_t i=0; i<sizeof(SportTelemetryPacket); i++) {
         luaInputTelemetryFifo->push(luaPacket.raw[i]);
       }
     }

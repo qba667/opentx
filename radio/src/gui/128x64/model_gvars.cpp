@@ -23,28 +23,28 @@
 void editGVarValue(coord_t x, coord_t y, event_t event, uint8_t gvar, uint8_t flightMode, LcdFlags flags)
 {
   FlightModeData * fm = &g_model.flightModeData[flightMode];
-  gvar_t & v = fm->gvars[gvar];
+  gvar_t * v = &fm->gvars[gvar];
   int16_t vmin, vmax;
-  if (v > GVAR_MAX) {
-    uint8_t fm = v - GVAR_MAX - 1;
+  if (*v > GVAR_MAX) {
+    uint8_t fm = *v - GVAR_MAX - 1;
     if (fm >= flightMode) fm++;
     drawFlightMode(x, y, fm + 1, flags&(~LEFT));
     vmin = GVAR_MAX + 1;
     vmax = GVAR_MAX + MAX_FLIGHT_MODES - 1;
   }
   else {
-    drawGVarValue(x, y, gvar, v, flags);
+    drawGVarValue(x, y, gvar, *v, flags);
     vmin = GVAR_MIN + g_model.gvars[gvar].min;
     vmax = GVAR_MAX - g_model.gvars[gvar].max;
   }
 
   if (flags & INVERS) {
     if (event == EVT_KEY_LONG(KEY_ENTER) && flightMode > 0) {
-      v = (v > GVAR_MAX ? 0 : GVAR_MAX+1);
+      *v = (*v > GVAR_MAX ? 0 : GVAR_MAX+1);
       storageDirty(EE_MODEL);
     }
     else if (s_editMode > 0) {
-      v = checkIncDec(event, v, vmin, vmax, EE_MODEL);
+      *v = checkIncDec(event, *v, vmin, vmax, EE_MODEL);
     }
   }
 }
@@ -64,10 +64,10 @@ enum GVarFields {
 
 void menuModelGVarOne(event_t event)
 {
-  GVarData * gvar = &g_model.gvars[s_currIdx];
+  GVarData * gvar = &g_model.gvars[s_currIdxSubMenu];
 
-  drawStringWithIndex(PSIZE(TR_GVARS)*FW+FW, 0, STR_GV, s_currIdx+1, 0);
-  drawGVarValue(32*FW, 0, s_currIdx, getGVarValue(s_currIdx, getFlightMode()));
+  drawStringWithIndex(PSIZE(TR_GVARS)*FW+FW, 0, STR_GV, s_currIdxSubMenu+1, 0);
+  drawGVarValue(32*FW, 0, s_currIdxSubMenu, getGVarValue(s_currIdxSubMenu, getFlightMode()));
   lcdDrawFilledRect(0, 0, LCD_W, FH, SOLID);
 
   SIMPLE_SUBMENU(STR_GVARS, GVAR_FIELD_LAST);
@@ -91,14 +91,14 @@ void menuModelGVarOne(event_t event)
         break;
 
       case GVAR_FIELD_MIN:
-        lcdDrawText(0, y, STR_MIN);
-        drawGVarValue(GVAR_2ND_COLUMN, y, s_currIdx, GVAR_MIN+gvar->min, LEFT|attr);
+        lcdDrawTextAlignedLeft(y, STR_MIN);
+        drawGVarValue(GVAR_2ND_COLUMN, y, s_currIdxSubMenu, GVAR_MIN+gvar->min, LEFT|attr);
         if (attr) gvar->min = checkIncDec(event, GVAR_MIN+gvar->min, GVAR_MIN, GVAR_MAX-gvar->max, EE_MODEL) - GVAR_MIN;
         break;
 
       case GVAR_FIELD_MAX:
-        lcdDrawText(0, y, STR_MAX);
-        drawGVarValue(GVAR_2ND_COLUMN, y, s_currIdx, GVAR_MAX-gvar->max, LEFT|attr);
+        lcdDrawTextAlignedLeft(y, STR_MAX);
+        drawGVarValue(GVAR_2ND_COLUMN, y, s_currIdxSubMenu, GVAR_MAX-gvar->max, LEFT|attr);
         if (attr) gvar->max = GVAR_MAX - checkIncDec(event, GVAR_MAX-gvar->max, GVAR_MIN+gvar->min, GVAR_MAX, EE_MODEL);
         break;
 
@@ -107,8 +107,8 @@ void menuModelGVarOne(event_t event)
         break;
 
       default:
-        drawStringWithIndex(0, y, STR_FP, k-GVAR_FIELD_FM0);
-        editGVarValue(GVAR_2ND_COLUMN, y, event, s_currIdx, k-GVAR_FIELD_FM0, LEFT|attr);
+        drawStringWithIndex(0, y, STR_FM, k-GVAR_FIELD_FM0);
+        editGVarValue(GVAR_2ND_COLUMN, y, event, s_currIdxSubMenu, k-GVAR_FIELD_FM0, LEFT|attr);
         break;
     }
   }

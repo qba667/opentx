@@ -20,24 +20,37 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "opentx.h"
-#include "FatFs/diskio.h"
-#include "stamp.h"
+#if defined(SDCARD)
+  #include "FatFs/diskio.h"
+#endif
 
 #if defined(__cplusplus) && !defined(SIMU)
 extern "C" {
 #endif
 
-#include "usbd_msc_mem.h"
 #include "usb_conf.h"
 
+// The F0 targets drive this back end directly from their own compact mass
+// storage class (f0/usb/usb_msd.c) and declare these in usb_storage.h, so the
+// ST callback vtable below is not built for them.
+#if !defined(STM32F0)
+#include "usbd_msc_mem.h"
+#else
+#define USBD_STD_INQUIRY_LENGTH 36
+#endif
+
 enum MassstorageLuns {
+  #if defined(SDCARD)
   STORAGE_SDCARD_LUN,
+  #endif
   STORAGE_EEPROM_LUN,
   STORAGE_LUN_NBR
 };
 
 /* USB Mass storage Standard Inquiry Data */
-const unsigned char STORAGE_Inquirydata[] = { //36
+// "extern" is needed for external linkage: a const object at namespace scope in
+// C++ would otherwise be internal, and the F0 USB class reads it directly.
+extern const unsigned char STORAGE_Inquirydata[] = { //36
   /* LUN 0 */
   0x00,		
   0x80,		
@@ -50,7 +63,9 @@ const unsigned char STORAGE_Inquirydata[] = { //36
   USB_MANUFACTURER,                        /* Manufacturer : 8 bytes */
   USB_PRODUCT,                             /* Product      : 16 Bytes */
   'R', 'a', 'd', 'i', 'o', ' ', ' ', ' ',
-  '1', '.', '0', '0',                      /* Version      : 4 Bytes */
+  '1', '.', '0', '0'                      /* Version      : 4 Bytes */
+#if defined(SDCARD)
+  ,
   /* LUN 1 */
   0x00,		
   0x80,		
@@ -64,9 +79,10 @@ const unsigned char STORAGE_Inquirydata[] = { //36
   USB_PRODUCT,                             /* Product      : 16 Bytes */
   'R', 'a', 'd', 'i', 'o', ' ', ' ', ' ',
   '1', '.', '0' ,'0',                      /* Version      : 4 Bytes */
+#endif
 };
 
-#define RESERVED_SECTORS (1 /*Boot*/ + 2 /*Fat table */ + 1 /*Root dir*/ + 8 /* one cluster for firmware.txt */)
+#define RESERVED_SECTORS (1 /*Boot*/ + 2 /*Fat table */ + 1 /*Root dir*/)
 
 int32_t fat12Write(const uint8_t * buffer, uint16_t sector, uint16_t count);
 int32_t fat12Read(uint8_t * buffer, uint16_t sector, uint16_t count );
@@ -93,6 +109,7 @@ int8_t STORAGE_Write (uint8_t lun,
 
 int8_t STORAGE_GetMaxLun (void);
 
+#if !defined(STM32F0)
 const USBD_STORAGE_cb_TypeDef USBD_MICRO_SDIO_fops =    // modified my OpenTX
 {
   STORAGE_Init,
@@ -106,6 +123,7 @@ const USBD_STORAGE_cb_TypeDef USBD_MICRO_SDIO_fops =    // modified my OpenTX
 };
 
 const USBD_STORAGE_cb_TypeDef  * const USBD_STORAGE_fops = &USBD_MICRO_SDIO_fops;    // modified my OpenTX
+#endif // !STM32F0
 
 #if defined(__cplusplus) && !defined(SIMU)
 }
@@ -113,19 +131,21 @@ const USBD_STORAGE_cb_TypeDef  * const USBD_STORAGE_fops = &USBD_MICRO_SDIO_fops
 
 int8_t STORAGE_Init (uint8_t lun)
 {
-  NVIC_InitTypeDef NVIC_InitStructure;
-  NVIC_InitStructure.NVIC_IRQChannel = SDIO_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority =0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-
+  #if defined(SDCARD)
+    NVIC_InitTypeDef NVIC_InitStructure;
+    NVIC_InitStructure.NVIC_IRQChannel = SDIO_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority =0;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+    return 0;
+  #endif
 /* TODO if no SD ... if( SD_Init() != 0)
   {
     return (-1); 
   } 
 */
-  return (0);
+  return (-1);
 }
 
 /**
@@ -140,7 +160,7 @@ int8_t STORAGE_GetCapacity (uint8_t lun, uint32_t *block_num, uint32_t *block_si
   if (lun == STORAGE_EEPROM_LUN) {
     *block_size = BLOCK_SIZE;
 #if defined(EEPROM)
-    *block_num  = RESERVED_SECTORS + EEPROM_SIZE/BLOCK_SIZE + FLASHSIZE/BLOCK_SIZE;
+    *block_num  = RESERVED_SECTORS + FLASHSIZE/BLOCK_SIZE + EEPROM_SIZE/BLOCK_SIZE;
 #else
     *block_num  = RESERVED_SECTORS + FLASHSIZE/BLOCK_SIZE;
 #endif
@@ -149,7 +169,7 @@ int8_t STORAGE_GetCapacity (uint8_t lun, uint32_t *block_num, uint32_t *block_si
 
   if (!SD_CARD_PRESENT())
     return -1;
-  
+#if defined(SDCARD)
   *block_size = BLOCK_SIZE;
 
   static DWORD sector_count = 0;
@@ -161,7 +181,7 @@ int8_t STORAGE_GetCapacity (uint8_t lun, uint32_t *block_num, uint32_t *block_si
   }
 
   *block_num  = sector_count;
-
+#endif
   return 0;
 }
 
@@ -169,7 +189,9 @@ uint8_t lunReady[STORAGE_LUN_NBR];
 
 void usbPluggedIn()
 {
+  #if defined(SDCARD)
   lunReady[STORAGE_SDCARD_LUN] = 1;
+  #endif
   lunReady[STORAGE_EEPROM_LUN] = 1;
 }
 
@@ -185,8 +207,10 @@ int8_t  STORAGE_IsReady (uint8_t lun)
     return (lunReady[STORAGE_EEPROM_LUN] != 0) ? 0 : -1;
   }
 #endif
-
+#if defined(SDCARD)
   return (lunReady[STORAGE_SDCARD_LUN] != 0 && SD_CARD_PRESENT()) ? 0 : -1;
+#endif
+  return 0;
 }
 
 /**
@@ -218,9 +242,11 @@ int8_t STORAGE_Read (uint8_t lun,
   if (lun == STORAGE_EEPROM_LUN) {
     return (fat12Read(buf, blk_addr, blk_len) == 0) ? 0 : -1;
   }
-
+#if defined(SDCARD)
   // read without cache
   return (__disk_read(0, buf, blk_addr, blk_len) == RES_OK) ? 0 : -1;
+#endif
+  return -1;
 }
 /**
   * @brief  Write data to the medium
@@ -241,9 +267,11 @@ int8_t STORAGE_Write (uint8_t lun,
   if (lun == STORAGE_EEPROM_LUN)	{
     return (fat12Write(buf, blk_addr, blk_len) == 0) ? 0 : -1;
   }
-
+#if defined(SDCARD)
   // write without cache
   return (__disk_write(0, buf, blk_addr, blk_len) == RES_OK) ? 0 : -1;
+#endif
+  return -1;
 }
 
 /**
@@ -257,41 +285,16 @@ int8_t STORAGE_GetMaxLun (void)
   return STORAGE_LUN_NBR - 1;
 }
 
-
-/* Firmware.txt */
-const char firmware_txt[] =
-#if defined(BOOT)
-  "OpenTX Bootloader"
-#else
-  "OpenTX Firmware"
-#endif
-  " for " FLAVOUR "\r\n\r\n"
-#if defined(BOOT)
-  "BOOTVER    "
-#else
-  "FWVERSION  "
-#endif
-  "opentx-" FLAVOUR "-" VERSION " (" GIT_STR ")\r\n"
-  "DATE       " DATE "\r\n"
-  "TIME       " TIME "\r\n"
-  "req SD ver " REQUIRED_SDCARD_VERSION "\r\n"
-#if !defined(BOOT)
-"BOOTVER    "
-#else
-"FWVERSION  "
-#endif
-  ;
-
 //------------------------------------------------------------------------------
 /**
  * FAT12 boot sector partition.
  */
 #if defined(EEPROM)
-#define TOTALSECTORS  (RESERVED_SECTORS + (EEPROM_SIZE/BLOCK_SIZE) +  (FLASHSIZE/BLOCK_SIZE))
+#define TOTALSECTORS  (RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE) + (EEPROM_SIZE/BLOCK_SIZE))
 #else
 #define TOTALSECTORS  (RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE))
 #endif
-const char g_FATboot[BLOCK_SIZE] =
+const char g_FATboot[62] = // [BLOCK_SIZE] - rest is generated on the fly
 {
   0xeb, 0x3c, 0x90, // Jump instruction.
   'O', 'p', 'e', 'n', 'T', 'x', 0x00, 0x00, // OEM Name
@@ -315,38 +318,39 @@ const char g_FATboot[BLOCK_SIZE] =
   'O', 'T', 'x', 0xD1, // Disk ID (serial number)
   'V', 'I', 'R', 'T', 'F', 'S', ' ', ' ', ' ', ' ', ' ', // Volume label
   'F', 'A', 'T', '1', '2', ' ', ' ', ' ', // FAT file system type
-  0x00, 0x00, // OS boot code
-
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0xaa
+//62
+//  0x00, 0x00, // OS boot code
+//// 64
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//// 128
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//// 256
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+//  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0xaa
 };
 
 
@@ -397,7 +401,7 @@ const FATDirEntry_t g_DIRroot[] =
     },
     {
       { 'F', 'I', 'R', 'M', 'W', 'A', 'R', 'E'},
-      { 'T', 'X', 'T'},
+      { 'B', 'I', 'N'},
       0x21,          // Readonly+Archive
       0x00,
       0x3E,
@@ -408,27 +412,8 @@ const FATDirEntry_t g_DIRroot[] =
       0xA302,
       0x3D55,
       0x0002,
-      sizeof(firmware_txt) + strlen(getOtherVersion(nullptr))
-    },
-    {
-      { 'F', 'I', 'R', 'M', 'W', 'A', 'R', 'E'},
-      { 'B', 'I', 'N'},
-#if defined(BOOT)
-      0x20,          // Archive
-#else
-      0x21,          // Readonly+Archive
-#endif
-      0x00,
-      0x3E,
-      0xA301,
-      0x3D55,
-      0x3D55,
-      0x0000,
-      0xA302,
-      0x3D55,
-      0x0003,
       FLASHSIZE
-  },
+    },
 #if defined(EEPROM)
     {
         { 'E', 'E', 'P', 'R', 'O', 'M', ' ', ' '},
@@ -442,7 +427,7 @@ const FATDirEntry_t g_DIRroot[] =
         0x0000,
         0xA302,
         0x3D55,
-        0x0003 + (FLASHSIZE/BLOCK_SIZE)/8,
+        0x0002 + (FLASHSIZE/BLOCK_SIZE)/8,
         EEPROM_SIZE
     },
 #endif
@@ -481,15 +466,14 @@ int32_t fat12Read(uint8_t * buffer, uint16_t sector, uint16_t count)
     memset(buffer, 0x00, BLOCK_SIZE);
     if (sector == 0) {
       memcpy(buffer, g_FATboot, sizeof(g_FATboot) ) ;
+      // skip last 450 - 2 bytes to save flash, it's already zeroed, set only last 2 bytes
+      *(uint16_t *)(buffer + BLOCK_SIZE - 2) = 0xaa55; // 2 end bytes
     }
     else if (sector == 1 || sector == 2) {
       // FAT table. Generate on the fly to save the 1024 byte flash space
       uint16_t cluster=0;
       int rest;
       pushCluster (buffer, sector, cluster, rest, (uint16_t) 0xFF8);
-      pushCluster (buffer, sector, cluster, rest, (uint16_t) 0xFFF);
-
-      // Entry for firmware.txt, exactly one cluster
       pushCluster (buffer, sector, cluster, rest, (uint16_t) 0xFFF);
 
       // Entry for firmware.bin
@@ -512,16 +496,7 @@ int32_t fat12Read(uint8_t * buffer, uint16_t sector, uint16_t count)
     else if (sector == 3) {
       memcpy(buffer, g_DIRroot, sizeof(g_DIRroot) ) ;
     }
-    else if (sector == 4)
-    {
-      memcpy(buffer, firmware_txt, sizeof(firmware_txt));
-      memcpy(buffer + sizeof(firmware_txt), getOtherVersion(nullptr), strlen(getOtherVersion(nullptr)));
-    }
-    else if (sector < RESERVED_SECTORS)
-    {
-      // allocated to firmware.txt
-    }
-    else if (sector < RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE )) {
+    else if (sector < RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE)) {
       uint32_t address;
       address = sector - RESERVED_SECTORS;
       address *= BLOCK_SIZE;
@@ -529,7 +504,7 @@ int32_t fat12Read(uint8_t * buffer, uint16_t sector, uint16_t count)
       memcpy(buffer, (uint8_t *)address, BLOCK_SIZE);
     }
 #if defined(EEPROM)
-    else if (sector < RESERVED_SECTORS + (EEPROM_SIZE/BLOCK_SIZE) + (FLASHSIZE/BLOCK_SIZE)) {
+    else if (sector < RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE) + (EEPROM_SIZE/BLOCK_SIZE)) {
       eepromReadBlock(buffer, (sector - RESERVED_SECTORS - (FLASHSIZE/BLOCK_SIZE))*BLOCK_SIZE, BLOCK_SIZE);
     }
 #endif
@@ -540,74 +515,32 @@ int32_t fat12Read(uint8_t * buffer, uint16_t sector, uint16_t count)
   return 0;
 }
 
-
-
 int32_t fat12Write(const uint8_t * buffer, uint16_t sector, uint16_t count)
 {
-  enum FatWriteOperation {
-    FATWRITE_NONE,
-    FATWRITE_EEPROM,
-    FATWRITE_FIRMWARE
-  };
-
-  // Silence compiler warning that this is not used on X10
-  __attribute__((unused)) static uint8_t operation = FATWRITE_NONE;
-
   TRACE("FAT12 Write(sector=%d, count=%d)", sector, count);
 
   if (sector < RESERVED_SECTORS) {
     // reserved, read-only
   }
   else if (sector < RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE)) {
-#if !defined(BOOT) // Don't allow overwrite of running firmware
-    return -1;
-#else
-    // firmware
-    uint32_t address;
-    address = sector - RESERVED_SECTORS;
-    address *= BLOCK_SIZE;
-    address += FIRMWARE_ADDRESS;
-    while (count) {
-      for (uint32_t i=0; i<BLOCK_SIZE/FLASH_PAGESIZE; i++) {
-        if (address >= FIRMWARE_ADDRESS+BOOTLOADER_SIZE/*protect bootloader*/ && address <= FIRMWARE_ADDRESS+FLASHSIZE-FLASH_PAGESIZE) {
-          if (address == FIRMWARE_ADDRESS+BOOTLOADER_SIZE && isFirmwareStart(buffer)) {
-            TRACE("FIRMWARE start found in sector %d", sector);
-            operation = FATWRITE_FIRMWARE;
-          }
-          if (operation == FATWRITE_FIRMWARE) {
-            flashWrite((uint32_t *)address, (uint32_t *)buffer);
-          }
-        }
-        address += FLASH_PAGESIZE;
-        buffer += FLASH_PAGESIZE;
-      }
-      sector++;
-      count--;
-      if (sector-RESERVED_SECTORS >= (FLASHSIZE/BLOCK_SIZE)) {
-        TRACE("FIRMWARE end written at sector %d", sector-1);
-        operation = FATWRITE_NONE;
-      }
-    }
-#endif
+    // firmware: read-only (flashing over USB removed), ignore writes
   }
 #if defined(EEPROM)
-  else if (sector < RESERVED_SECTORS + (EEPROM_SIZE/BLOCK_SIZE) + (FLASHSIZE/BLOCK_SIZE)) {
-    // eeprom
+  else if (sector < RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE) + (EEPROM_SIZE/BLOCK_SIZE)) {
+    // eeprom: the virtual disk is fully allocated (no free clusters),
+    // so any write to the data area is EEPROM.BIN content; write sectors
+    // through in whatever order the host delivers them.
+    // The file-offset-0 sector must still pass isEepromStart: non-EEPROM
+    // content there is rejected loudly instead of silently applied.
     while (count) {
-      if (operation == FATWRITE_NONE && isEepromStart(buffer)) {
-        TRACE("EEPROM start found in sector %d", sector);
-        operation = FATWRITE_EEPROM;
+      if (sector == RESERVED_SECTORS + (FLASHSIZE/BLOCK_SIZE) && !isEepromStart(buffer)) {
+        TRACE("EEPROM header mismatch in sector %d", sector);
+        return -1;
       }
-      if (operation == FATWRITE_EEPROM) {
-        eepromWriteBlock((uint8_t *)buffer, (sector-RESERVED_SECTORS-(FLASHSIZE/BLOCK_SIZE))*BLOCK_SIZE, BLOCK_SIZE);
-      }
+      eepromWriteBlock((uint8_t *)buffer, (sector-RESERVED_SECTORS-(FLASHSIZE/BLOCK_SIZE))*BLOCK_SIZE, BLOCK_SIZE);
       buffer += BLOCK_SIZE;
       sector++;
       count--;
-      if (sector-RESERVED_SECTORS >= (EEPROM_SIZE/BLOCK_SIZE)+(FLASHSIZE/BLOCK_SIZE)) {
-        TRACE("EEPROM end written at sector %d", sector-1);
-        operation = FATWRITE_NONE;
-      }
     }
   }
 #endif

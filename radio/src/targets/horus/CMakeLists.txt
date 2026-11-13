@@ -8,11 +8,14 @@ set(SDCARD YES)
 set(EEPROM SDCARD)
 set(HAPTIC YES)
 set(GUI_DIR 480x272)
+set(NAVIGATION_TYPE horus)
 set(TARGET_DIR horus)
 set(LINKER_SCRIPT targets/horus/stm32f4_flash.ld)
 set(RAMBACKUP YES)
 set(LUA YES)
 set(PPM_LIMITS_SYMETRICAL YES)
+SET(USB_SERIAL ON CACHE BOOL "Enable USB serial (CDC)")
+
 # for size report script
 set(CPU_TYPE_FULL STM32F429xI)
 set(SIZE_TARGET_MEM_DEFINE "MEM_SIZE_SDRAM2=8192")
@@ -28,8 +31,8 @@ if (PCB STREQUAL X10)
   set(TARGET_SRC
     ${TARGET_SRC}
     ../common/arm/stm32/audio_dac_driver.cpp
-    ../common/arm/stm32/analog_adc_driver.cpp
-    ../common/arm/stm32/analog_pwm_driver.cpp
+    ../common/arm/stm32/adc_driver.cpp
+    ../common/arm/stm32/sticks_pwm_driver.cpp
     )
 
   set(BITMAPS_TARGET x10_bitmaps)
@@ -101,6 +104,7 @@ set(GUI_SRC
   ${THEMES_SRC}
   ${LAYOUTS_SRC}
   ${WIDGETS_SRC}
+  rle.cpp
   )
 if(DISK_CACHE)
   set(SRC ${SRC} disk_cache.cpp)
@@ -112,7 +116,7 @@ if(INTERNAL_GPS)
   message("Horus: Internal GPS enabled")
 endif()
 
-set(SERIAL2_DRIVER ../common/arm/stm32/serial2_driver.cpp)
+set(AUX_SERIAL_DRIVER ../common/arm/stm32/aux_serial_driver.cpp)
 
 set(GVAR_SCREEN model_gvars.cpp)
 
@@ -155,7 +159,7 @@ set(STM32LIB_SRC
 if(PYTHONINTERP_FOUND)
   add_custom_target(datacopy
     WORKING_DIRECTORY ${RADIO_DIRECTORY}/src
-    COMMAND ${PYTHON_EXECUTABLE} ${RADIO_DIRECTORY}/util/generate_datacopy.py datastructs.h -DPCBHORUS -DCPUARM -DCOLORLCD -DCPUARM -DBACKUP > storage/datacopy.cpp
+    COMMAND ${Python3_EXECUTABLE} ${RADIO_DIRECTORY}/util/generate_datacopy.py datastructs.h -DPCBHORUS -DPCBX10 -DCPUARM -DCOLORLCD -DBACKUP -Itargets/horus > storage/datacopy.cpp
     DEPENDS ${RADIO_DIRECTORY}/src/datastructs.h ${RADIO_DIRECTORY}/util/generate_datacopy.py
   )
 endif()
